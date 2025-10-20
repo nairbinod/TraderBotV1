@@ -29,6 +29,13 @@ namespace TraderBotV1
 			var mode = (_cfg.Mode ?? "Auto").ToLowerInvariant();
 			bool backtest = mode is "backtest" or "auto";
 			bool live = mode is "live" or "auto" && _cfg.UsePaperWhenLive;
+			var symbols = _db.GetActiveSymbols();
+
+			if (symbols.Count == 0)
+			{
+				Console.WriteLine("⚠️ No symbols found in database, falling back to config list...");
+				symbols = _cfg.Symbols.ToList();
+			}
 
 			foreach (var symbol in _cfg.Symbols)
 			{

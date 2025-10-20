@@ -88,5 +88,21 @@ namespace TraderBotV1.Data
 			cmd.Parameters.AddWithValue("$p", price);
 			cmd.ExecuteNonQuery();
 		}
+
+		public List<string> GetActiveSymbols()
+		{
+			var symbols = new List<string>();
+			using var conn = new SqliteConnection(_conn);
+			conn.Open();
+			using var cmd = conn.CreateCommand();
+			cmd.CommandText = "SELECT Symbol FROM Symbols WHERE Active = 1";
+			using var reader = cmd.ExecuteReader();
+			while (reader.Read())
+			{
+				symbols.Add(reader.GetString(0));
+			}
+			return symbols;
+		}
+
 	}
 }
