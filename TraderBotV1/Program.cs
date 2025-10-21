@@ -23,7 +23,8 @@ namespace TraderBotV1
             // Build market data provider (Polygon or Alpaca) via factory
             var provider = DataProviderFactory.Create(cfg);
 
-            var bot = new SmartBot(tradingClient, provider, cfg);
+            var db = new SqliteStorage();
+            var bot = new SmartBot(provider, db, cfg);
             await bot.RunAsync();
 
             Console.WriteLine("✅ Done.");
