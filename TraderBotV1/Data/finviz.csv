@@ -1,0 +1,185 @@
+Ticker,Company,Sector,Active
+AA,Alcoa Corp,Basic Materials,1
+AAL,American Airlines Group Inc,Industrials,1
+AAOI,Applied Optoelectronics Inc,Technology,1
+ACHR,Archer Aviation Inc,Industrials,1
+ACI,Albertsons Companies Inc,Consumer Defensive,1
+ADT,ADT Inc,Industrials,1
+AEO,American Eagle Outfitters Inc,Consumer Cyclical,1
+AES,AES Corp,Utilities,1
+AGNC,AGNC Investment Corp,Real Estate,1
+AI,C3.ai Inc,Technology,1
+APA,APA Corporation,Energy,1
+APLD,Applied Digital Corporation,Technology,1
+ARCC,Ares Capital Corp,Financial,1
+ASTS,AST SpaceMobile Inc,Technology,1
+AUR,Aurora Innovation Inc,Technology,1
+AVTR,Avantor Inc,Healthcare,1
+BAC,Bank Of America Corp,Financial,1
+BBAI,BigBear.ai Holdings Inc,Technology,1
+BKR,Baker Hughes Co,Energy,1
+BMNR,BitMine Immersion Technologies Inc,Financial,1
+BMY,Bristol-Myers Squibb Co,Healthcare,1
+BULL,Webull Corp,Technology,1
+C,Citigroup Inc,Financial,1
+CAG,Conagra Brands Inc,Consumer Defensive,1
+CARR,Carrier Global Corp,Industrials,1
+CCCS,CCC Intelligent Solutions Holdings Inc,Technology,1
+CCL,Carnival Corp,Consumer Cyclical,1
+CDE,Coeur Mining Inc,Basic Materials,1
+CFLT,Confluent Inc,Technology,1
+CIFR,Cipher Mining Inc,Financial,1
+CLF,Cleveland-Cliffs Inc,Basic Materials,1
+CLSK,Cleanspark Inc,Financial,1
+CMCSA,Comcast Corp,Communication Services,1
+CMG,Chipotle Mexican Grill,Consumer Cyclical,1
+CNC,Centene Corp,Healthcare,1
+COLB,"Columbia Banking System, Inc",Financial,1
+COLD,Americold Realty Trust Inc,Real Estate,1
+COMM,CommScope Holding Company Inc,Technology,1
+COMP,Compass Inc,Real Estate,1
+CORZ,Core Scientific Inc,Technology,1
+COTY,Coty Inc,Consumer Defensive,1
+CSCO,"Cisco Systems, Inc",Technology,1
+CSX,CSX Corp,Industrials,1
+CTRA,Coterra Energy Inc,Energy,1
+CVS,CVS Health Corp,Healthcare,1
+CZR,Caesars Entertainment Inc,Consumer Cyclical,1
+DAL,"Delta Air Lines, Inc",Industrials,1
+DKNG,DraftKings Inc,Consumer Cyclical,1
+DOW,Dow Inc,Basic Materials,1
+DVN,Devon Energy Corp,Energy,1
+EBAY,EBay Inc,Consumer Cyclical,1
+ENPH,Enphase Energy Inc,Technology,1
+ENVX,Enovix Corporation,Industrials,1
+EOSE,Eos Energy Enterprises Inc,Industrials,1
+EQT,EQT Corp,Energy,1
+ET,Energy Transfer LP,Energy,1
+EXEL,Exelixis Inc,Healthcare,1
+F,Ford Motor Co,Consumer Cyclical,1
+FCX,Freeport-McMoRan Inc,Basic Materials,1
+FHN,First Horizon Corporation,Financial,1
+FIG,Figma Inc,Technology,1
+FITB,Fifth Third Bancorp,Financial,1
+FLNC,Fluence Energy Inc,Utilities,1
+FNB,F.N.B. Corp,Financial,1
+FOLD,Amicus Therapeutics Inc,Healthcare,1
+FRMI,Fermi Inc,Real Estate,1
+GAP,"Gap, Inc",Consumer Cyclical,1
+GIS,"General Mills, Inc",Consumer Defensive,1
+GLXY,Galaxy Digital Inc,Financial,1
+GM,General Motors Company,Consumer Cyclical,1
+GNTX,Gentex Corp,Consumer Cyclical,1
+GT,Goodyear Tire & Rubber Co,Consumer Cyclical,1
+HAL,Halliburton Co,Energy,1
+HBAN,"Huntington Bancshares, Inc",Financial,1
+HIMS,Hims & Hers Health Inc,Healthcare,1
+HL,Hecla Mining Co,Basic Materials,1
+HPE,Hewlett Packard Enterprise Co,Technology,1
+HPQ,HP Inc,Technology,1
+HUT,Hut 8 Corp,Financial,1
+IBKR,Interactive Brokers Group Inc,Financial,1
+IBRX,ImmunityBio Inc,Healthcare,1
+INTC,Intel Corp,Technology,1
+IONQ,IonQ Inc,Technology,1
+IPG,"Interpublic Group Of Cos., Inc",Communication Services,1
+IVZ,Invesco Ltd,Financial,1
+JOBY,Joby Aviation Inc,Industrials,1
+KDP,Keurig Dr Pepper Inc,Consumer Defensive,1
+KEY,Keycorp,Financial,1
+KHC,Kraft Heinz Co,Consumer Defensive,1
+KIM,Kimco Realty Corporation,Real Estate,1
+KMI,Kinder Morgan Inc,Energy,1
+KO,Coca-Cola Co,Consumer Defensive,1
+KVUE,Kenvue Inc,Consumer Defensive,1
+LBRT,Liberty Energy Inc,Energy,1
+LCID,Lucid Group Inc,Consumer Cyclical,1
+LUMN,Lumen Technologies Inc,Communication Services,1
+LUNR,Intuitive Machines Inc,Industrials,1
+LUV,Southwest Airlines Co,Industrials,1
+LVS,Las Vegas Sands Corp,Consumer Cyclical,1
+LYFT,Lyft Inc,Technology,1
+MARA,MARA Holdings Inc,Financial,1
+MCHP,"Microchip Technology, Inc",Technology,1
+MO,Altria Group Inc,Consumer Defensive,1
+MOS,Mosaic Company,Basic Materials,1
+MP,MP Materials Corporation,Basic Materials,1
+MQ,Marqeta Inc,Technology,1
+MRK,Merck & Co Inc,Healthcare,1
+MRNA,Moderna Inc,Healthcare,1
+MRVL,Marvell Technology Inc,Technology,1
+NCLH,Norwegian Cruise Line Holdings Ltd,Consumer Cyclical,1
+NEE,NextEra Energy Inc,Utilities,1
+NEM,Newmont Corp,Basic Materials,1
+NKE,"Nike, Inc",Consumer Cyclical,1
+NTLA,Intellia Therapeutics Inc,Healthcare,1
+NVTS,Navitas Semiconductor Corp,Technology,1
+NWL,Newell Brands Inc,Consumer Defensive,1
+ON,ON Semiconductor Corp,Technology,1
+ONB,Old National Bancorp,Financial,1
+ONDS,Ondas Holdings Inc,Technology,1
+OPEN,Opendoor Technologies Inc,Real Estate,1
+OSCR,Oscar Health Inc,Healthcare,1
+OWL,Blue Owl Capital Inc,Financial,1
+OXY,Occidental Petroleum Corp,Energy,1
+PATH,UiPath Inc,Technology,1
+PCAR,Paccar Inc,Industrials,1
+PCG,PG&E Corp,Utilities,1
+PDI,PIMCO Dynamic Income Fund,Financial,1
+PFE,Pfizer Inc,Healthcare,1
+PINS,Pinterest Inc,Communication Services,1
+PL,Planet Labs PBC,Industrials,1
+PLUG,Plug Power Inc,Industrials,1
+PPL,PPL Corp,Utilities,1
+PR,Permian Resources Corp,Energy,1
+PTEN,Patterson-UTI Energy Inc,Energy,1
+PTON,Peloton Interactive Inc,Consumer Cyclical,1
+PYPL,PayPal Holdings Inc,Financial,1
+QBTS,D-Wave Quantum Inc,Technology,1
+QS,QuantumScape Corp,Consumer Cyclical,1
+QUBT,Quantum Computing Inc,Technology,1
+RF,Regions Financial Corp,Financial,1
+RGTI,Rigetti Computing Inc,Technology,1
+RIOT,Riot Platforms Inc,Financial,1
+RITM,Rithm Capital Corporation,Real Estate,1
+RIVN,Rivian Automotive Inc,Consumer Cyclical,1
+RKLB,Rocket Lab Corp,Industrials,1
+RKT,Rocket Companies Inc,Financial,1
+RUN,Sunrun Inc,Technology,1
+RXRX,Recursion Pharmaceuticals Inc,Healthcare,1
+SBET,SharpLink Gaming Inc,Consumer Cyclical,1
+SBUX,Starbucks Corp,Consumer Cyclical,1
+SCHW,Charles Schwab Corp,Financial,1
+SLB,SLB Ltd,Energy,1
+SMCI,Super Micro Computer Inc,Technology,1
+SMMT,Summit Therapeutics Inc,Healthcare,1
+SMR,NuScale Power Corporation,Industrials,1
+SNAP,Snap Inc,Communication Services,1
+SO,Southern Company,Utilities,1
+SOFI,SoFi Technologies Inc,Financial,1
+SOUN,SoundHound AI Inc,Technology,1
+T,"AT&T, Inc",Communication Services,1
+TEM,Tempus AI Inc,Healthcare,1
+TFC,Truist Financial Corporation,Financial,1
+TTD,Trade Desk Inc,Communication Services,1
+U,Unity Software Inc,Technology,1
+UBER,Uber Technologies Inc,Technology,1
+UEC,Uranium Energy Corp,Energy,1
+UPS,"United Parcel Service, Inc",Industrials,1
+UPST,Upstart Holdings Inc,Financial,1
+USAR,USA Rare Earth Inc,Basic Materials,1
+USB,U.S. Bancorp,Financial,1
+UUUU,Energy Fuels Inc,Energy,1
+UWMC,UWM Holdings Corporation,Financial,1
+VFC,VF Corp,Consumer Cyclical,1
+VG,Venture Global Inc,Energy,1
+VICI,VICI Properties Inc,Real Estate,1
+VLY,Valley National Bancorp,Financial,1
+VTRS,Viatris Inc,Healthcare,1
+VZ,Verizon Communications Inc,Communication Services,1
+WBD,Warner Bros. Discovery Inc,Communication Services,1
+WFC,Wells Fargo & Co,Financial,1
+WMB,Williams Cos Inc,Energy,1
+WU,Western Union Company,Financial,1
+WULF,TeraWulf Inc,Financial,1
+ZETA,Zeta Global Holdings Corp,Technology,1
