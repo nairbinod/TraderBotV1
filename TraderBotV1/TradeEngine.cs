@@ -110,7 +110,7 @@ namespace TraderBotV1
             var emaLong = Indicators.EMAList(closes, 21);
             var rsi = Indicators.RSI(closes, 14);
             var (macd, macdSig, macdHist) = Indicators.MACDSeries(closes);
-            var (bbU, bbM, bbL) = Indicators.BollingerBands(closes, 20, 2);
+            var (bbU, bbM, bbL) = Indicators.BollingerBandsFast(closes, 20, 2);
             var atr = Indicators.ATRList(highs, lows, closes, 14);
 
             // --- Run strategies ---

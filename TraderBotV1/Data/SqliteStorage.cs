@@ -8,7 +8,7 @@ namespace TraderBotV1.Data
 
         public SqliteStorage()
         {
-            string path = Path.Combine(@"C:\Work\TraderBotV1\TraderBotV1\Data", "TraderBot.v1.db");
+            string path = Path.Combine(@"C:\github\nairbinod\TraderBotV1\TraderBotV1\Data", "TraderBot.v1.db");
             if (!File.Exists(path))
             {
                 Console.WriteLine($"🆕 Creating new SQLite database at {path}...");

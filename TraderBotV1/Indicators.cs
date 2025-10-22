@@ -2,24 +2,28 @@
 {
     public static class Indicators
     {
-        // --- Simple Moving Average ---
-        public static List<decimal> SMAList(List<decimal> vals, int period)
-        {
-            var output = new List<decimal>(vals.Count);
-            for (int i = 0; i < vals.Count; i++)
-            {
-                if (i + 1 < period)
-                {
-                    output.Add(0);
-                    continue;
-                }
-                output.Add(vals.Skip(i + 1 - period).Take(period).Average());
-            }
-            return output;
-        }
+		// --- Simple Moving Average ---
+		public static List<decimal?> SMAList(List<decimal> vals, int period)
+		{
+			var output = new List<decimal?>(vals.Count);
+			if (vals.Count == 0) return output;
 
-        // --- Exponential Moving Average (seeded with SMA) ---
-        public static List<decimal> EMAList(List<decimal> vals, int period)
+			decimal sum = 0;
+			for (int i = 0; i < vals.Count; i++)
+			{
+				sum += vals[i];
+				if (i >= period) sum -= vals[i - period];
+
+				if (i + 1 < period)
+					output.Add(null);
+				else
+					output.Add(sum / period);
+			}
+			return output;
+		}
+
+		// --- Exponential Moving Average (seeded with SMA) ---
+		public static List<decimal> EMAList(List<decimal> vals, int period)
         {
             var ema = new List<decimal>();
             if (vals.Count < period) return vals.ToList();
@@ -88,37 +92,51 @@
             return (macd, paddedSig, hist);
         }
 
-        // --- Improved Bollinger Bands ---
-        public static (List<decimal?> upper, List<decimal?> middle, List<decimal?> lower)
-            BollingerBands(List<decimal> closes, int period = 20, decimal mult = 2m)
-        {
-            var middle = SMAList(closes, period).Select(x => (decimal?)x).ToList();
-            var upper = new List<decimal?>(closes.Count);
-            var lower = new List<decimal?>(closes.Count);
+		// --- Improved Bollinger Bands ---
+		public static (List<decimal?> upper, List<decimal?> middle, List<decimal?> lower)
+	BollingerBandsFast(List<decimal> closes, int period = 20, decimal mult = 2m)
+		{
+			var upper = new List<decimal?>();
+			var middle = new List<decimal?>();
+			var lower = new List<decimal?>();
+			if (closes.Count < period)
+			{
+				return (Enumerable.Repeat<decimal?>(null, closes.Count).ToList(),
+						Enumerable.Repeat<decimal?>(null, closes.Count).ToList(),
+						Enumerable.Repeat<decimal?>(null, closes.Count).ToList());
+			}
 
-            for (int i = 0; i < closes.Count; i++)
-            {
-                if (i + 1 < period)
-                {
-                    upper.Add(null);
-                    lower.Add(null);
-                    continue;
-                }
+			for (int i = 0; i < closes.Count; i++)
+			{
+				if (i + 1 < period)
+				{
+					upper.Add(null);
+					middle.Add(null);
+					lower.Add(null);
+					continue;
+				}
 
-                var window = closes.GetRange(i + 1 - period, period);
-                var mean = middle[i] ?? window.Average();
-                var variance = window.Average(v => (v - mean) * (v - mean));
-                var sd = (decimal)Math.Sqrt((double)variance);
+				decimal sum = 0, sumSq = 0;
+				for (int j = i + 1 - period; j <= i; j++)
+				{
+					sum += closes[j];
+					sumSq += closes[j] * closes[j];
+				}
 
-                upper.Add(mean + mult * sd);
-                lower.Add(mean - mult * sd);
-            }
+				var mean = sum / period;
+				var variance = (sumSq / period) - (mean * mean);
+				var sd = (decimal)Math.Sqrt((double)Math.Max(variance, 0));
 
-            return (upper, middle, lower);
-        }
+				middle.Add(mean);
+				upper.Add(mean + mult * sd);
+				lower.Add(mean - mult * sd);
+			}
 
-        // --- ATR (Wilder's smoothing) ---
-        public static List<decimal> ATRList(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
+			return (upper, middle, lower);
+		}
+
+		// --- ATR (Wilder's smoothing) ---
+		public static List<decimal> ATRList(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
         {
             if (closes.Count <= period)
                 return new List<decimal>();

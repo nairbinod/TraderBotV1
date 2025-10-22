@@ -47,7 +47,7 @@ namespace TraderBotV1.Data
 
             do
             {
-                var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Day);
+                var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Minute);
 
                 // Use Pagination.PageToken instead of PageToken property
                 if (!string.IsNullOrEmpty(nextPageToken))
@@ -72,10 +72,9 @@ namespace TraderBotV1.Data
         public async Task<List<MarketBar>> GetBarsAsync(string symbol, int daysHistory)
         {
             var end = DateTime.Now.AddHours(-1);
-            var start = end.AddDays(-daysHistory);
-
-            //var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Day);
-            var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Day);
+			var start = end.AddDays(-daysHistory);
+			//var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Day);
+			var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Day);
 
             //var rsp = await _dataClient.ListHistoricalBarsAsync(req);
             var allBars = new List<IBar>();
