@@ -39,7 +39,7 @@ namespace TraderBotV1.Data
 					Symbol TEXT, Timestamp TEXT,
 					Side TEXT, Quantity INTEGER, Price REAL
 				);
-                DELETE from Prices;DELETE from Trades;DELETE from Signals;";
+                DELETE from Prices;DELETE from Signals;INSERT INTO TradesHistory SELECT * FROM Trades; DELETE from Trades;";
             cmd.ExecuteNonQuery();
         }
 
