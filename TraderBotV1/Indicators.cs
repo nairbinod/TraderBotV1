@@ -2,28 +2,28 @@
 {
     public static class Indicators
     {
-		// --- Simple Moving Average ---
-		public static List<decimal?> SMAList(List<decimal> vals, int period)
-		{
-			var output = new List<decimal?>(vals.Count);
-			if (vals.Count == 0) return output;
+        // --- Simple Moving Average ---
+        public static List<decimal?> SMAList(List<decimal> vals, int period)
+        {
+            var output = new List<decimal?>(vals.Count);
+            if (vals.Count == 0) return output;
 
-			decimal sum = 0;
-			for (int i = 0; i < vals.Count; i++)
-			{
-				sum += vals[i];
-				if (i >= period) sum -= vals[i - period];
+            decimal sum = 0;
+            for (int i = 0; i < vals.Count; i++)
+            {
+                sum += vals[i];
+                if (i >= period) sum -= vals[i - period];
 
-				if (i + 1 < period)
-					output.Add(null);
-				else
-					output.Add(sum / period);
-			}
-			return output;
-		}
+                if (i + 1 < period)
+                    output.Add(null);
+                else
+                    output.Add(sum / period);
+            }
+            return output;
+        }
 
-		// --- Exponential Moving Average (seeded with SMA) ---
-		public static List<decimal> EMAList(List<decimal> vals, int period)
+        // --- Exponential Moving Average (seeded with SMA) ---
+        public static List<decimal> EMAList(List<decimal> vals, int period)
         {
             var ema = new List<decimal>();
             if (vals.Count < period) return vals.ToList();
@@ -36,6 +36,21 @@
                 prevEma = i < period ? prevEma : vals[i] * k + prevEma * (1 - k);
                 ema.Add(prevEma);
             }
+            return ema;
+        }
+
+        public static decimal EMA(List<decimal> values, int period)
+        {
+            if (values.Count < period) return 0m;
+
+            decimal multiplier = 2m / (period + 1);
+            decimal ema = values.Take(period).Average(); // Start with SMA
+
+            for (int i = period; i < values.Count; i++)
+            {
+                ema = ((values[i] - ema) * multiplier) + ema;
+            }
+
             return ema;
         }
 
@@ -92,51 +107,51 @@
             return (macd, paddedSig, hist);
         }
 
-		// --- Improved Bollinger Bands ---
-		public static (List<decimal?> upper, List<decimal?> middle, List<decimal?> lower)
-	BollingerBandsFast(List<decimal> closes, int period = 20, decimal mult = 2m)
-		{
-			var upper = new List<decimal?>();
-			var middle = new List<decimal?>();
-			var lower = new List<decimal?>();
-			if (closes.Count < period)
-			{
-				return (Enumerable.Repeat<decimal?>(null, closes.Count).ToList(),
-						Enumerable.Repeat<decimal?>(null, closes.Count).ToList(),
-						Enumerable.Repeat<decimal?>(null, closes.Count).ToList());
-			}
+        // --- Improved Bollinger Bands ---
+        public static (List<decimal?> upper, List<decimal?> middle, List<decimal?> lower)
+    BollingerBandsFast(List<decimal> closes, int period = 20, decimal mult = 2m)
+        {
+            var upper = new List<decimal?>();
+            var middle = new List<decimal?>();
+            var lower = new List<decimal?>();
+            if (closes.Count < period)
+            {
+                return (Enumerable.Repeat<decimal?>(null, closes.Count).ToList(),
+                        Enumerable.Repeat<decimal?>(null, closes.Count).ToList(),
+                        Enumerable.Repeat<decimal?>(null, closes.Count).ToList());
+            }
 
-			for (int i = 0; i < closes.Count; i++)
-			{
-				if (i + 1 < period)
-				{
-					upper.Add(null);
-					middle.Add(null);
-					lower.Add(null);
-					continue;
-				}
+            for (int i = 0; i < closes.Count; i++)
+            {
+                if (i + 1 < period)
+                {
+                    upper.Add(null);
+                    middle.Add(null);
+                    lower.Add(null);
+                    continue;
+                }
 
-				decimal sum = 0, sumSq = 0;
-				for (int j = i + 1 - period; j <= i; j++)
-				{
-					sum += closes[j];
-					sumSq += closes[j] * closes[j];
-				}
+                decimal sum = 0, sumSq = 0;
+                for (int j = i + 1 - period; j <= i; j++)
+                {
+                    sum += closes[j];
+                    sumSq += closes[j] * closes[j];
+                }
 
-				var mean = sum / period;
-				var variance = (sumSq / period) - (mean * mean);
-				var sd = (decimal)Math.Sqrt((double)Math.Max(variance, 0));
+                var mean = sum / period;
+                var variance = (sumSq / period) - (mean * mean);
+                var sd = (decimal)Math.Sqrt((double)Math.Max(variance, 0));
 
-				middle.Add(mean);
-				upper.Add(mean + mult * sd);
-				lower.Add(mean - mult * sd);
-			}
+                middle.Add(mean);
+                upper.Add(mean + mult * sd);
+                lower.Add(mean - mult * sd);
+            }
 
-			return (upper, middle, lower);
-		}
+            return (upper, middle, lower);
+        }
 
-		// --- ATR (Wilder's smoothing) ---
-		public static List<decimal> ATRList(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
+        // --- ATR (Wilder's smoothing) ---
+        public static List<decimal> ATRList(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
         {
             if (closes.Count <= period)
                 return new List<decimal>();

@@ -97,7 +97,7 @@ namespace TraderBotV1
             string symbol,
             List<decimal> closes,
             List<decimal> highs,
-            List<decimal> lows)
+            List<decimal> lows, List<decimal>? volumes = null)
         {
             if (closes.Count < 50)
             {
@@ -119,14 +119,34 @@ namespace TraderBotV1
             var s3 = Strategies.AtrBreakout(closes, highs, lows, atr, 0.5m);
             var s4 = Strategies.MacdDivergence(closes, macd, macdSig, macdHist);
 
+            // --- Run extended strategies (equal voting) ---
+            var s5 = StrategiesExtended.AdxFilter(highs, lows, closes, 14, 25m);
+            var s6 = (volumes != null && volumes.Count == closes.Count)
+                        ? StrategiesExtended.VolumeConfirm(closes, volumes, 20, 1.5m)
+                        : new StrategySignal("Hold", 0m, "no volumes");
+            var s7 = StrategiesExtended.CciReversion(highs, lows, closes, 20);
+            var s8 = StrategiesExtended.DonchianBreakout(highs, lows, closes, 20);
+            var s9 = StrategiesExtended.PivotReversal(highs, lows, closes);
+            var s10 = StrategiesExtended.StochRsiReversal(closes, 14, 14, 3, 3);
+            var s11 = StrategiesExtended.Ema200RegimeFilter(closes, 200);
+
+
             // --- Log all individual signals ---
             _db.InsertSignal(symbol, DateTime.UtcNow, "EMA+RSI", s1.Signal, $"{s1.Strength:F2}|{s1.Reason}");
             _db.InsertSignal(symbol, DateTime.UtcNow, "Bollinger", s2.Signal, $"{s2.Strength:F2}|{s2.Reason}");
             _db.InsertSignal(symbol, DateTime.UtcNow, "ATR BO", s3.Signal, $"{s3.Strength:F2}|{s3.Reason}");
             _db.InsertSignal(symbol, DateTime.UtcNow, "MACD Div", s4.Signal, $"{s4.Strength:F2}|{s4.Reason}");
+            _db.InsertSignal(symbol, DateTime.UtcNow, "ADX", s5.Signal, $"{s5.Strength:F2}|{s5.Reason}");
+            _db.InsertSignal(symbol, DateTime.UtcNow, "Volume", s6.Signal, $"{s6.Strength:F2}|{s6.Reason}");
+            _db.InsertSignal(symbol, DateTime.UtcNow, "CCI", s7.Signal, $"{s7.Strength:F2}|{s7.Reason}");
+            _db.InsertSignal(symbol, DateTime.UtcNow, "Donchian", s8.Signal, $"{s8.Strength:F2}|{s8.Reason}");
+            _db.InsertSignal(symbol, DateTime.UtcNow, "Pivot", s9.Signal, $"{s9.Strength:F2}|{s9.Reason}");
+            _db.InsertSignal(symbol, DateTime.UtcNow, "StochRSI", s10.Signal, $"{s10.Strength:F2}|{s10.Reason}");
+            _db.InsertSignal(symbol, DateTime.UtcNow, "EMA200", s11.Signal, $"{s11.Strength:F2}|{s11.Reason}");
 
             // --- Majority vote logic ---
-            var allSignals = new[] { s1, s2, s3, s4 };
+            var allSignals = new[] { s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11 };
+
             var buyVotes = allSignals.Count(s => s.Signal == "Buy");
             var sellVotes = allSignals.Count(s => s.Signal == "Sell");
 
@@ -146,35 +166,35 @@ namespace TraderBotV1
             }
 
             // --- Entry Price Logic ---
-            var close = closes.Last();
+            // --- Entry Price Logic (breakout-style with ATR buffer) ---
+            var close = closes[^1];
             var prevHigh = highs[^2];
             var prevLow = lows[^2];
-            var atrVal = atr.Last();
+            var atrVal = atr.LastOrDefault();
 
             decimal entry = close;
-            if (finalSignal == "Buy")
-                entry = Math.Max(close * 1.002m, prevHigh + atrVal * 0.5m);
-            else if (finalSignal == "Sell")
-                entry = Math.Min(close * 0.998m, prevLow - atrVal * 0.5m);
+            if (finalSignal == "Buy") entry = Math.Max(close * 1.002m, prevHigh + atrVal * 0.5m);
+            if (finalSignal == "Sell") entry = Math.Min(close * 0.998m, prevLow - atrVal * 0.5m);
+            entry = Math.Round(entry, 2);
 
             // --- Risk-based quantity ---
-            decimal accountEquity = 100000m; // Simulated account
+            decimal accountEquity = 100000m; // simulated equity
             decimal riskAmount = accountEquity * _riskPercent;
-            decimal stopDistance = atrVal > 0 ? atrVal : 1m;
+            decimal stopDistance = atrVal > 0 ? atrVal : Math.Max(1m, close * 0.01m);
             decimal qty = Math.Max(1, Math.Floor(riskAmount / stopDistance));
 
-            // --- Logging ---
-            string reason = agreeing.Count >= 2
+            // --- Log consensus & entry ---
+            string reason = (finalSignal != "Hold" && agreeing.Count >= 2)
                 ? $"Triggered {finalSignal} by {string.Join(" + ", agreeing)}"
                 : "No consensus (holding)";
 
             _db.InsertSignal(symbol, DateTime.UtcNow, "Consensus", finalSignal, reason);
             _db.InsertSignal(symbol, DateTime.UtcNow, "EntryPoint", finalSignal, $"entry={entry:F2}");
 
-            Console.WriteLine($"📊 {symbol} | BuyVotes={buyVotes}, SellVotes={sellVotes}");
-            Console.WriteLine($"📈 {symbol} | Final={finalSignal} | Entry={entry:F2} | Reason={reason}");
+            Console.WriteLine($"📊 {symbol} | BuyVotes={buyVotes}, SellVotes={sellVotes} | {reason}");
+            Console.WriteLine($"📈 {symbol} | Final={finalSignal} | Entry={entry:F2}");
 
-            // --- Simulated trade execution ---
+            // --- Simulate trade execution (no live orders) ---
             //if (finalSignal == "Buy" && buyVotes >= 2)
             //    SimulateOrder(symbol, "Buy", qty, entry, reason);
             //else if (finalSignal == "Sell" && sellVotes >= 2)
@@ -191,10 +211,19 @@ namespace TraderBotV1
 
         private static string GetShortName(StrategySignal s)
         {
-            if (s.Reason.Contains("EMA")) return "EMA+RSI";
-            if (s.Reason.Contains("LB") || s.Reason.Contains("UB")) return "BBands";
-            if (s.Reason.Contains("breakout") || s.Reason.Contains("breakdown")) return "ATR BO";
-            if (s.Reason.Contains("div")) return "MACD Div";
+            // match by reason keywords (keeps it simple and avoids changing StrategySignal shape)
+            var r = s.Reason ?? "";
+            if (r.Contains("EMA", StringComparison.OrdinalIgnoreCase)) return "EMA+RSI";
+            if (r.Contains("LB") || r.Contains("UB") || r.Contains("bands")) return "BBands";
+            if (r.Contains("breakout") || r.Contains("breakdown") || r.Contains("ATR")) return "ATR BO";
+            if (r.Contains("div", StringComparison.OrdinalIgnoreCase)) return "MACD Div";
+            if (r.Contains("ADX", StringComparison.OrdinalIgnoreCase)) return "ADX";
+            if (r.Contains("Vol spike", StringComparison.OrdinalIgnoreCase)) return "Volume";
+            if (r.Contains("CCI", StringComparison.OrdinalIgnoreCase)) return "CCI";
+            if (r.Contains("Donchian", StringComparison.OrdinalIgnoreCase)) return "Donchian";
+            if (r.Contains("R1") || r.Contains("S1") || r.Contains("Pivot", StringComparison.OrdinalIgnoreCase)) return "Pivot";
+            if (r.Contains("StochRSI", StringComparison.OrdinalIgnoreCase)) return "StochRSI";
+            if (r.Contains("Regime", StringComparison.OrdinalIgnoreCase)) return "EMA200";
             return "Unknown";
         }
     }
