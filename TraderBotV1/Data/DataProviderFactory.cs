@@ -40,41 +40,15 @@ namespace TraderBotV1.Data
             var env = usePaper ? Environments.Paper : Environments.Live;
             _dataClient = env.GetAlpacaDataClient(new SecretKey(apiKey, apiSecret));
         }
-        //public async Task<List<IBar>> GetAllBarsAsync(IAlpacaDataClient client, string symbol, DateTime start, DateTime end)
-        //{
-        //    var allBars = new List<IBar>();
-        //    string? nextPageToken = null;
 
-        //    do
-        //    {
-        //        var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Hour);
-
-        //        // Use Pagination.PageToken instead of PageToken property
-        //        if (!string.IsNullOrEmpty(nextPageToken))
-        //        {
-        //            req.Pagination.Token = nextPageToken;
-        //            req.Pagination.Size = 1000;
-        //        }
-
-        //        var resp = await client.ListHistoricalBarsAsync(req);
-
-        //        if (resp.Items.Count > 0)
-        //            allBars.AddRange(resp.Items);
-
-        //        nextPageToken = resp.NextPageToken;
-
-        //    } while (!string.IsNullOrEmpty(nextPageToken));
-
-        //    Console.WriteLine($"✅ Retrieved {allBars.Count} bars for {symbol}");
-        //    return allBars;
-        //}
 
         public async Task<List<MarketBar>> GetBarsAsync(string symbol, int daysHistory)
         {
             var end = DateTime.Now.AddHours(-1);
 			var start = end.AddDays(-daysHistory);
-			//var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Day);
-			var req = new HistoricalBarsRequest(symbol, start, end, BarTimeFrame.Day);
+            
+            var timeFrame = daysHistory <= 60 ? BarTimeFrame.Hour : BarTimeFrame.Day;
+			var req = new HistoricalBarsRequest(symbol, start, end, timeFrame);
 
             //var rsp = await _dataClient.ListHistoricalBarsAsync(req);
             var allBars = new List<IBar>();
@@ -87,9 +61,13 @@ namespace TraderBotV1.Data
                 next = rsp.NextPageToken;
             } while (!string.IsNullOrEmpty(next));
 
-            //exclude low volume bars as noise
-            decimal avgVol = allBars.Count > 0 ? allBars.Average(b => b.Volume) : 0;
-            decimal minVolThreshold = avgVol * 0.2m; //20% of average volume
+			//exclude low volume bars as noise
+			decimal avgVol = allBars.Count > 0 ? allBars.Average(b => b.Volume) : 0;
+			decimal minVolThreshold = avgVol * 0.2m; //20% of average volume
+			if (timeFrame== BarTimeFrame.Day)
+            {
+                minVolThreshold = 100000;
+			}
 
             return allBars
                 .Where(b => b.Volume >= minVolThreshold).Select(b => new MarketBar(b.TimeUtc, (decimal)b.Open, (decimal)b.High, (decimal)b.Low, (decimal)b.Close, (long)b.Volume))

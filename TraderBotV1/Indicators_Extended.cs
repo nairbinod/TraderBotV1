@@ -1,245 +1,352 @@
-﻿namespace TraderBotV1
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace TraderBotV1
 {
-    public static class IndicatorsExtended
-    {
-        // -----------------------------
-        // ADX (Average Directional Index)
-        // period typically 14
-        // Returns ADX list aligned to inputs (zeros for warmup)
-        // -----------------------------
-        public static List<decimal> ADXList(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
-        {
-            int n = closes.Count;
-            var adx = new List<decimal>(Enumerable.Repeat(0m, n));
-            if (n < period + 2) return adx;
+	public static class IndicatorsExtended
+	{
+		// --- StochRSI ---
+		// --- StochRSI (False-signal resistant version) ---
+		public static (List<decimal> k, List<decimal> d) StochRSIList(
+			List<decimal> closes, int rsiPeriod = 14, int stochPeriod = 14, int smoothK = 3, int smoothD = 3)
+		{
+			int n = closes?.Count ?? 0;
+			var filteredK = new List<decimal>(new decimal[n]);
+			var filteredD = new List<decimal>(new decimal[n]);
+			if (n < rsiPeriod + stochPeriod + Math.Max(smoothK, smoothD))
+				return (filteredK, filteredD);
 
-            // True Range and Directional Movements
-            var tr = new decimal[n];
-            var dmPlus = new decimal[n];
-            var dmMinus = new decimal[n];
+			// ✅ Compute base StochRSI (internal core logic, same as your original)
+			var rsiVals = Indicators.RSIList(closes, rsiPeriod);
+			int rsiCount = rsiVals?.Count ?? 0;
+			if (rsiCount < stochPeriod + 1)
+				return (filteredK, filteredD);
 
-            for (int i = 1; i < n; i++)
-            {
-                var upMove = highs[i] - highs[i - 1];
-                var downMove = lows[i - 1] - lows[i];
+			int validLen = Math.Min(n, rsiCount);
+			var kRaw = new decimal[validLen];
+			var dRaw = new decimal[validLen];
 
-                dmPlus[i] = (upMove > downMove && upMove > 0) ? upMove : 0m;
-                dmMinus[i] = (downMove > upMove && downMove > 0) ? downMove : 0m;
+			for (int i = stochPeriod - 1; i < validLen; i++)
+			{
+				int start = Math.Max(0, i - stochPeriod + 1);
+				var segment = rsiVals.Skip(start).Take(stochPeriod).ToList();
+				decimal minR = segment.Min();
+				decimal maxR = segment.Max();
+				decimal denom = Math.Max(maxR - minR, 1e-8m);
+				kRaw[i] = Math.Clamp((rsiVals[i] - minR) / denom, 0m, 1m);
+			}
 
-                var highDiff = Math.Abs(highs[i] - closes[i - 1]);
-                var lowDiff = Math.Abs(lows[i] - closes[i - 1]);
-                var range1 = highs[i] - lows[i];
-                tr[i] = Math.Max(range1, Math.Max(highDiff, lowDiff));
-            }
+			// Smooth K
+			for (int i = 0; i < validLen; i++)
+			{
+				int start = Math.Max(0, i - smoothK + 1);
+				filteredK[i] = Math.Round(kRaw.Skip(start).Take(i - start + 1).Average(), 4);
+			}
 
-            // Wilder's smoothing of TR, +DM, -DM
-            decimal atr = tr.Skip(1).Take(period).Sum();
-            decimal smPlus = dmPlus.Skip(1).Take(period).Sum();
-            decimal smMinus = dmMinus.Skip(1).Take(period).Sum();
+			// Smooth D
+			for (int i = 0; i < validLen; i++)
+			{
+				int start = Math.Max(0, i - smoothD + 1);
+				filteredD[i] = Math.Round(filteredK.Skip(start).Take(i - start + 1).Average(), 4);
+			}
 
-            // DI and DX arrays (keep as decimal)
-            var diPlus = new decimal[n];
-            var diMinus = new decimal[n];
-            var dx = new decimal[n];
+			// ✅ Now apply noise suppression filter
+			var atr = Indicators.ATRList(closes, closes, closes, 14);
 
-            int start = period + 1; // first index where we have initial smoothed values
+			for (int i = 1; i < validLen; i++)
+			{
+				// Volatility filter
+				bool volatilityOK = (i < atr.Count) && (atr[i] > closes[i] * 0.005m); // >0.5%
 
-            diPlus[start] = (smPlus == 0 || atr == 0) ? 0 : (100m * (smPlus / atr));
-            diMinus[start] = (smMinus == 0 || atr == 0) ? 0 : (100m * (smMinus / atr));
-            dx[start] = (diPlus[start] + diMinus[start] == 0) ? 0 : (100m * Math.Abs((diPlus[start] - diMinus[start]) / (diPlus[start] + diMinus[start])));
+				// RSI confirmation
+				bool rsiConfirm =
+					(rsiVals[i] < 35m && filteredK[i] < 0.2m) || // oversold + low K
+					(rsiVals[i] > 65m && filteredK[i] > 0.8m);   // overbought + high K
 
-            // progress smoothing forward
-            for (int i = start + 1; i < n; i++)
-            {
-                atr = atr - (atr / period) + tr[i];
-                smPlus = smPlus - (smPlus / period) + dmPlus[i];
-                smMinus = smMinus - (smMinus / period) + dmMinus[i];
+				// Smooth cross
+				bool smoothCross = Math.Abs(filteredK[i] - filteredD[i]) > 0.05m;
 
-                diPlus[i] = (smPlus == 0 || atr == 0) ? 0 : (100m * (smPlus / atr));
-                diMinus[i] = (smMinus == 0 || atr == 0) ? 0 : (100m * (smMinus / atr));
+				if (!(volatilityOK && rsiConfirm && smoothCross))
+				{
+					// damp noise — pull toward previous
+					filteredK[i] = Math.Round((filteredK[i - 1] * 0.7m + filteredK[i] * 0.3m), 4);
+					filteredD[i] = Math.Round((filteredD[i - 1] * 0.7m + filteredD[i] * 0.3m), 4);
+				}
+			}
 
-                var sum = diPlus[i] + diMinus[i];
-                dx[i] = sum == 0 ? 0 : (100m * Math.Abs((diPlus[i] - diMinus[i]) / sum));
-            }
+			// Ensure output length consistency
+			if (filteredK.Count < n) filteredK.AddRange(Enumerable.Repeat(0m, n - filteredK.Count));
+			if (filteredD.Count < n) filteredD.AddRange(Enumerable.Repeat(0m, n - filteredD.Count));
 
-            // ADX is Wilder-smooth of DX
-            decimal firstAdx = dx.Skip(start).Take(period).Average();
-            adx[start + period - 1] = firstAdx;
+			return (filteredK, filteredD);
+		}
 
-            for (int i = start + period; i < n; i++)
-            {
-                var prev = adx[i - 1];
-                adx[i] = (prev * (period - 1) + dx[i]) / period;
-            }
+		// --- ADX (False-signal resistant version) ---
+		public static (List<decimal> adx, List<decimal> diPlus, List<decimal> diMinus) ADXList(
+	List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
+		{
+			int n = Math.Min(highs.Count, Math.Min(lows.Count, closes.Count));
+			var adx = new List<decimal>(new decimal[n]);
+			var diPlusList = new List<decimal>(new decimal[n]);
+			var diMinusList = new List<decimal>(new decimal[n]);
+			if (n < period + 2) return (adx, diPlusList, diMinusList);
 
-            return adx;
-        }
+			var tr = new decimal[n];
+			var dmPlus = new decimal[n];
+			var dmMinus = new decimal[n];
 
-        // -----------------------------
-        // CCI (Commodity Channel Index)
-        // period typically 20
-        // -----------------------------
-        public static List<decimal> CCIList(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 20)
-        {
-            int n = closes.Count;
-            var cci = new List<decimal>(Enumerable.Repeat(0m, n));
-            if (n < period) return cci;
+			// Step 1: True Range and Directional Movement
+			for (int i = 1; i < n; i++)
+			{
+				decimal upMove = highs[i] - highs[i - 1];
+				decimal downMove = lows[i - 1] - lows[i];
 
-            var tp = new List<decimal>(n);
-            for (int i = 0; i < n; i++)
-                tp.Add((highs[i] + lows[i] + closes[i]) / 3m);
+				dmPlus[i] = (upMove > downMove && upMove > 0) ? upMove : 0m;
+				dmMinus[i] = (downMove > upMove && downMove > 0) ? downMove : 0m;
 
-            for (int i = period - 1; i < n; i++)
-            {
-                var window = tp.GetRange(i + 1 - period, period);
-                var mean = window.Average();
-                var meanDev = window.Average(v => Math.Abs(v - mean));
-                var denom = 0.015m * Math.Max(meanDev, 1e-8m);
-                cci[i] = (tp[i] - mean) / denom;
-            }
+				decimal hl = highs[i] - lows[i];
+				decimal hc = Math.Abs(highs[i] - closes[i - 1]);
+				decimal lc = Math.Abs(lows[i] - closes[i - 1]);
+				tr[i] = Math.Max(hl, Math.Max(hc, lc));
+			}
 
-            return cci;
-        }
+			// Step 2: Wilder smoothing
+			decimal atr = tr.Skip(1).Take(period).Average();
+			decimal smPlus = dmPlus.Skip(1).Take(period).Average();
+			decimal smMinus = dmMinus.Skip(1).Take(period).Average();
 
-        // -----------------------------
-        // Stochastic RSI (returns %K and %D lists scaled 0..1)
-        // rsiPeriod=14, stochPeriod=14, smoothK=3, smoothD=3 are common
-        // -----------------------------
-        public static (List<decimal> k, List<decimal> d) StochRSIList(
-            List<decimal> closes, int rsiPeriod = 14, int stochPeriod = 14, int smoothK = 3, int smoothD = 3)
-        {
-            int n = closes.Count;
-            var kList = new List<decimal>(Enumerable.Repeat(0m, n));
-            var dList = new List<decimal>(Enumerable.Repeat(0m, n));
-            if (n < rsiPeriod + stochPeriod + Math.Max(smoothK, smoothD)) return (kList, dList);
+			var dx = new decimal[n];
+			for (int i = period + 1; i < n; i++)
+			{
+				atr = (atr * (period - 1) + tr[i]) / period;
+				smPlus = (smPlus * (period - 1) + dmPlus[i]) / period;
+				smMinus = (smMinus * (period - 1) + dmMinus[i]) / period;
 
-            // Build RSI series (scalar RSI we have; create quick series)
-            var rsiSeries = new List<decimal?>(Enumerable.Repeat<decimal?>(null, n));
-            if (n > rsiPeriod)
-            {
-                decimal avgGain = 0, avgLoss = 0;
-                for (int i = 1; i <= rsiPeriod; i++)
-                {
-                    var diff = closes[i] - closes[i - 1];
-                    if (diff > 0) avgGain += diff; else avgLoss -= diff;
-                }
-                avgGain /= rsiPeriod; avgLoss /= rsiPeriod;
+				if (atr <= 1e-8m) { dx[i] = 0m; continue; }
 
-                rsiSeries[rsiPeriod] = avgLoss == 0 ? 100m : 100m - (100m / (1m + (avgGain / avgLoss)));
+				decimal diPlus = 100m * (smPlus / atr);
+				decimal diMinus = 100m * (smMinus / atr);
 
-                for (int i = rsiPeriod + 1; i < n; i++)
-                {
-                    var diff = closes[i] - closes[i - 1];
-                    avgGain = (avgGain * (rsiPeriod - 1) + Math.Max(diff, 0)) / rsiPeriod;
-                    avgLoss = (avgLoss * (rsiPeriod - 1) + Math.Max(-diff, 0)) / rsiPeriod;
-                    var rsi = avgLoss == 0 ? 100m : 100m - (100m / (1m + (avgGain / avgLoss)));
-                    rsiSeries[i] = rsi;
-                }
-            }
+				// ✅ Save DI+ and DI- for external directional use
+				diPlusList[i] = diPlus;
+				diMinusList[i] = diMinus;
 
-            // Stoch of RSI
-            var rsiVals = rsiSeries.Select(x => x ?? 50m).ToList();
-            var kRaw = new List<decimal>(Enumerable.Repeat(0m, n));
+				// ✅ Require minimum trend separation (filter noise)
+				if (Math.Abs(diPlus - diMinus) < 15m)
+				{
+					dx[i] = 0m;
+					continue;
+				}
 
-            for (int i = rsiPeriod + stochPeriod; i < n; i++)
-            {
-                var window = rsiVals.GetRange(i + 1 - stochPeriod, stochPeriod);
-                var minR = window.Min();
-                var maxR = window.Max();
-                var denom = Math.Max(maxR - minR, 1e-8m);
-                kRaw[i] = (rsiVals[i] - minR) / denom; // 0..1
-            }
+				decimal sum = diPlus + diMinus;
+				dx[i] = (sum == 0) ? 0m : 100m * Math.Abs(diPlus - diMinus) / sum;
+			}
 
-            // Smooth %K and produce %D
-            for (int i = 0; i < n; i++)
-            {
-                if (i + 1 < smoothK) { kList[i] = 0m; continue; }
-                var w = kRaw.Skip(i + 1 - smoothK).Take(smoothK).Average();
-                kList[i] = w;
-            }
-            for (int i = 0; i < n; i++)
-            {
-                if (i + 1 < smoothD) { dList[i] = 0m; continue; }
-                var w = kList.Skip(i + 1 - smoothD).Take(smoothD).Average();
-                dList[i] = w;
-            }
+			// Step 3: Smooth ADX (less reactive)
+			int adxStart = Math.Min(period * 2 - 1, n - 1);
+			decimal firstAdx = dx.Skip(period).Take(period).DefaultIfEmpty(0m).Average();
+			adx[adxStart] = firstAdx;
 
-            return (kList, dList);
-        }
+			for (int i = adxStart + 1; i < n; i++)
+				adx[i] = (adx[i - 1] * (period - 1) + dx[i]) / period;
 
-        // -----------------------------
-        // Donchian Channels (Upper/Lower)
-        // period typically 20
-        // -----------------------------
-        public static (List<decimal> upper, List<decimal> lower) DonchianChannel(List<decimal> highs, List<decimal> lows, int period = 20)
-        {
-            int n = highs.Count;
-            var up = new List<decimal>(Enumerable.Repeat(0m, n));
-            var lo = new List<decimal>(Enumerable.Repeat(0m, n));
-            if (n < period) return (up, lo);
+			// Step 4: Additional smoothing & normalization
+			for (int i = 1; i < n; i++)
+				adx[i] = Math.Round((adx[i] * 0.6m + adx[i - 1] * 0.4m), 2);
 
-            for (int i = period - 1; i < n; i++)
-            {
-                up[i] = highs.Skip(i + 1 - period).Take(period).Max();
-                lo[i] = lows.Skip(i + 1 - period).Take(period).Min();
-            }
-            return (up, lo);
-        }
+			// Step 5: Optional dampening in low volatility
+			decimal avgATR = atr / Math.Max(closes.Last(), 1e-8m);
+			if (avgATR < 0.008m) // only 0.8% volatility
+				adx = adx.Select(v => Math.Round(v * 0.5m, 2)).ToList();
 
-        // -----------------------------
-        // Pivot Points for a single bar (classic P, R1, S1)
-        // -----------------------------
-        public static (decimal P, decimal R1, decimal S1) PivotPoints(decimal prevHigh, decimal prevLow, decimal prevClose)
-        {
-            var P = (prevHigh + prevLow + prevClose) / 3m;
-            var R1 = 2m * P - prevLow;
-            var S1 = 2m * P - prevHigh;
-            return (P, R1, S1);
-        }
+			// Step 6: Final false-signal suppression
+			for (int i = 0; i < n; i++)
+			{
+				if (adx[i] < 20m) adx[i] = 0m; // ignore weak trends
+				if (Math.Abs(diPlusList[i] - diMinusList[i]) < 10m) adx[i] *= 0.5m; // low separation dampening
+			}
 
-        // -----------------------------
-        // Volume SMA
-        // -----------------------------
-        public static List<decimal> VolumeSMA(List<decimal> volumes, int period = 20)
-        {
-            int n = volumes.Count;
-            var sma = new List<decimal>(Enumerable.Repeat(0m, n));
-            if (n < period) return sma;
+			return (adx, diPlusList, diMinusList);
+		}
 
-            decimal sum = 0;
-            for (int i = 0; i < n; i++)
-            {
-                sum += volumes[i];
-                if (i >= period) sum -= volumes[i - period];
-                if (i + 1 >= period) sma[i] = sum / period;
-            }
-            return sma;
-        }
 
-        // -----------------------------
-        // EMA200 Regime helper
-        // Returns EMA(period) as a list (use last value to compare with Close)
-        // -----------------------------
-        public static List<decimal> EMARegime(List<decimal> vals, int period = 200)
-        {
-            var ema = new List<decimal>(vals.Count);
-            if (vals.Count < period)
-            {
-                // seed with simple average of whatever is available
-                if (vals.Count == 0) return ema;
-                decimal seed = vals.Average();
-                for (int i = 0; i < vals.Count; i++) ema.Add(seed);
-                return ema;
-            }
 
-            decimal k = 2m / (period + 1);
-            decimal prevEma = vals.Take(period).Average();
-            for (int i = 0; i < vals.Count; i++)
-            {
-                prevEma = i < period ? prevEma : vals[i] * k + prevEma * (1 - k);
-                ema.Add(prevEma);
-            }
-            return ema;
-        }
-    }
+		// --- CCI ---
+		public static List<decimal> CCIList(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 20)
+		{
+			int n = Math.Min(highs.Count, Math.Min(lows.Count, closes.Count));
+			var cci = Enumerable.Repeat(0m, n).ToList();
+			if (n < period + 1) return cci;
+
+			var tp = new decimal[n];
+			for (int i = 0; i < n; i++)
+				tp[i] = (highs[i] + lows[i] + closes[i]) / 3m;
+
+			for (int i = period - 1; i < n; i++)
+			{
+				int start = Math.Max(0, i - period + 1);
+				var slice = tp.Skip(start).Take(Math.Min(period, n - start)).ToList();
+				decimal sma = slice.Average();
+				decimal meanDev = slice.Select(x => Math.Abs(x - sma)).DefaultIfEmpty(0m).Average();
+				if (meanDev <= 1e-8m) { cci[i] = 0m; continue; }
+				cci[i] = Math.Round((tp[i] - sma) / (0.015m * meanDev), 2);
+			}
+
+			for (int i = 1; i < n; i++)
+				cci[i] = Math.Round(cci[i - 1] * 0.2m + cci[i] * 0.8m, 2);
+
+			return cci;
+		}
+
+		// --- Donchian Channel ---
+		// --- Donchian Channel (False-signal resistant version) ---
+		public static (List<decimal> upper, List<decimal> lower) DonchianChannel(
+			List<decimal> highs, List<decimal> lows, int period = 20, decimal baseBuffer = 0.002m)
+		{
+			int n = Math.Min(highs.Count, lows.Count);
+			var upper = new List<decimal>(new decimal[n]);
+			var lower = new List<decimal>(new decimal[n]);
+			if (n < period + 1) return (upper, lower);
+
+			for (int i = period - 1; i < n; i++)
+			{
+				int start = Math.Max(0, i - period + 1);
+				var highSlice = highs.Skip(start).Take(period).ToList();
+				var lowSlice = lows.Skip(start).Take(period).ToList();
+
+				decimal highMax = highSlice.Max();
+				decimal lowMin = lowSlice.Min();
+				decimal range = Math.Max(highMax - lowMin, 1e-8m);
+
+				// --- Adaptive buffer: widen in tight ranges ---
+				decimal dynamicBuffer = baseBuffer;
+				if (range / Math.Max(highMax, 1e-8m) < 0.01m) // <1% price range → tighten filter
+					dynamicBuffer *= 2.5m; // require stronger breakout
+
+				upper[i] = Math.Round(highMax + (range * dynamicBuffer), 4);
+				lower[i] = Math.Round(lowMin - (range * dynamicBuffer), 4);
+			}
+
+			// --- EMA-like smoothing to reduce whipsaws ---
+			const decimal alpha = 0.25m; // smoother than simple average
+			for (int i = 1; i < n; i++)
+			{
+				upper[i] = Math.Round(upper[i - 1] * (1 - alpha) + upper[i] * alpha, 4);
+				lower[i] = Math.Round(lower[i - 1] * (1 - alpha) + lower[i] * alpha, 4);
+			}
+
+			// --- Trend slope filter (optional) ---
+			// Flat or contracting channels imply sideways markets — suppress false breakouts.
+			for (int i = 2; i < n; i++)
+			{
+				var slopeU = upper[i] - upper[i - 2];
+				var slopeL = lower[i] - lower[i - 2];
+				var channelWidth = Math.Max(upper[i] - lower[i], 1e-8m);
+
+				// If both slopes are nearly flat (<0.1% of price), reduce sensitivity
+				if (Math.Abs(slopeU) < channelWidth * 0.001m && Math.Abs(slopeL) < channelWidth * 0.001m)
+				{
+					upper[i] = Math.Round((upper[i] * 0.5m + highs[i] * 0.5m), 4);
+					lower[i] = Math.Round((lower[i] * 0.5m + lows[i] * 0.5m), 4);
+				}
+			}
+
+			return (upper, lower);
+		}
+
+
+		// --- ATR (Average True Range) ---
+		public static List<decimal> ATRList(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
+		{
+			int n = Math.Min(highs.Count, Math.Min(lows.Count, closes.Count));
+			var atr = Enumerable.Repeat(0m, n).ToList();
+			if (n < period + 1) return atr;
+
+			var tr = new decimal[n];
+			for (int i = 1; i < n; i++)
+			{
+				decimal hl = highs[i] - lows[i];
+				decimal hc = Math.Abs(highs[i] - closes[i - 1]);
+				decimal lc = Math.Abs(lows[i] - closes[i - 1]);
+				tr[i] = Math.Max(hl, Math.Max(hc, lc));
+			}
+
+			decimal firstAtr = tr.Skip(1).Take(period).Average();
+			atr[period] = firstAtr;
+
+			for (int i = period + 1; i < n; i++)
+				atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period;
+
+			for (int i = 1; i < n; i++)
+				atr[i] = Math.Round((atr[i] * 0.85m + atr[i - 1] * 0.15m), 4);
+
+			return atr;
+		}
+
+		// --- Pivot Points ---
+		public static (decimal P, decimal R1, decimal S1) PivotPoints(decimal prevHigh, decimal prevLow, decimal prevClose)
+		{
+			if (prevHigh <= 0m && prevLow <= 0m && prevClose <= 0m)
+				return (0m, 0m, 0m);
+
+			var P = (prevHigh + prevLow + prevClose) / 3m;
+			var R1 = 2m * P - prevLow;
+			var S1 = 2m * P - prevHigh;
+			return (P, R1, S1);
+		}
+
+		public static (decimal P, decimal R1, decimal S1) PivotPoints(IList<decimal> highs, IList<decimal> lows, IList<decimal> closes, int lookback = 1)
+		{
+			if (highs == null || lows == null || closes == null)
+				return (0m, 0m, 0m);
+
+			var n = Math.Min(highs.Count, Math.Min(lows.Count, closes.Count));
+			if (n == 0) return (0m, 0m, 0m);
+
+			lookback = Math.Max(1, Math.Min(lookback, n));
+			int idx = n - lookback;
+
+			var prevHigh = highs[idx];
+			var prevLow = lows[idx];
+			var prevClose = closes[idx];
+
+			return PivotPoints(prevHigh, prevLow, prevClose);
+		}
+
+		// --- EMA (Exponential Moving Average) ---
+		public static List<decimal> EMAList(List<decimal> values, int period)
+		{
+			int n = values?.Count ?? 0;
+			var ema = Enumerable.Repeat(0m, n).ToList();
+			if (n == 0) return ema;
+
+			if (period <= 1 || n < period)
+			{
+				// Fallback: just clone the input or seed with average
+				decimal seed = values.Average();
+				for (int i = 0; i < n; i++) ema[i] = seed;
+				return ema;
+			}
+
+			decimal k = 2m / (period + 1m);
+			decimal prevEma = values.Take(period).Average();
+
+			for (int i = 0; i < n; i++)
+			{
+				prevEma = (i < period)
+					? prevEma
+					: (values[i] * k) + (prevEma * (1m - k));
+
+				ema[i] = Math.Round(prevEma, 4);
+			}
+
+			// Optional smoothing for stability
+			for (int i = 1; i < n; i++)
+				ema[i] = Math.Round((ema[i] * 0.9m + ema[i - 1] * 0.1m), 4);
+
+			return ema;
+		}
+
+	}
 }
