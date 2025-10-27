@@ -14,6 +14,7 @@ namespace TraderBotV1
 		public string[] Symbols { get; set; } = new[] { "OXY" };
 		public int DaysHistory { get; set; } = 5;
 		public decimal RiskPercent { get; set; } = 0.01m;
+		public bool PersistPriceData { get; set; } = true;
 		public PolygonCfg Polygon { get; set; } = new();
 		public AlpacaCfg Alpaca { get; set; } = new();
 	}

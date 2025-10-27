@@ -12,7 +12,7 @@ namespace TraderBotV1
 		private static decimal Clamp01(decimal v) => Math.Min(1m, Math.Max(0m, v));
 
 		// ─────────────────────────────────────────────────────────────
-		// 1) EMA Crossover + RSI Filter
+		// 1) EMA Crossover + RSI Filter (with validation)
 		// ─────────────────────────────────────────────────────────────
 		public static StrategySignal EmaRsi(
 			List<decimal> closes,
@@ -20,44 +20,58 @@ namespace TraderBotV1
 			int slow = 21,
 			int rsiPeriod = 14)
 		{
-			if (closes.Count < slow + 3) return Hold("insufficient data");
+			if (closes.Count < slow + 10) return Hold("insufficient data");
 
 			var emaFast = Indicators.EMAList(closes, fast);
 			var emaSlow = Indicators.EMAList(closes, slow);
 			var rsiList = Indicators.RSIList(closes, rsiPeriod);
-			if (emaFast.Count < 3 || emaSlow.Count < 3 || rsiList.Count == 0)
-				return Hold("not ready");
 
-			var rsiNow = rsiList[^1];
-			var rsiPrev = rsiList[^2];
+			if (emaFast.Count < 5 || emaSlow.Count < 5 || rsiList.Count < 5)
+				return Hold("indicators not ready");
 
-			bool crossUp = emaFast[^1] > emaSlow[^1] && emaFast[^2] <= emaSlow[^2];
-			bool crossDown = emaFast[^1] < emaSlow[^1] && emaFast[^2] >= emaSlow[^2];
+			int idx = closes.Count - 1;
+			var context = SignalValidator.AnalyzeMarketContext(closes, closes, closes, idx);
 
-			bool slopeUp = emaFast[^1] > emaFast[^2] && emaFast[^2] > emaFast[^3];
-			bool slopeDown = emaFast[^1] < emaFast[^2] && emaFast[^2] < emaFast[^3];
+			// Check for crossover
+			bool crossUp = emaFast[idx] > emaSlow[idx] && emaFast[idx - 1] <= emaSlow[idx - 1];
+			bool crossDown = emaFast[idx] < emaSlow[idx] && emaFast[idx - 1] >= emaSlow[idx - 1];
 
-			var price = closes[^1];
-			var emaGap = Math.Abs(emaFast[^1] - emaSlow[^1]);
-			var gapRel = price > 0 ? emaGap / price : 0m;
-
-			bool strongGap = gapRel > 0.002m;
-			bool rsiCrossedUp = rsiPrev <= 50m && rsiNow > 50m;
-			bool rsiCrossedDown = rsiPrev >= 50m && rsiNow < 50m;
-
-			if (crossUp && slopeUp && rsiCrossedUp && strongGap && rsiNow > 55m)
+			if (crossUp)
 			{
-				var strength = Clamp01(gapRel * 8m * 0.6m + Clamp01((rsiNow - 55m) / 20m) * 0.4m);
-				return new("Buy", strength, $"EMA crossover ↑ & RSI rising ({rsiNow:F1})");
+				var validation = SignalValidator.ValidateEMACrossover(closes, emaFast, emaSlow, idx, "Buy");
+				if (!validation.IsValid)
+					return Hold($"EMA buy rejected: {validation.Reason}");
+
+				// Additional RSI confirmation
+				var rsiValidation = SignalValidator.ValidateRSI(rsiList, closes, idx, "Buy");
+				bool rsiConfirm = rsiValidation.IsValid;
+
+				decimal finalConfidence = rsiConfirm
+					? (validation.Confidence * 0.6m + rsiValidation.Confidence * 0.4m)
+					: validation.Confidence * 0.75m;
+
+				return new("Buy", finalConfidence,
+					$"EMA crossover ↑ validated ({validation.Confidence:P0}) {(rsiConfirm ? "+ RSI" : "")}");
 			}
 
-			if (crossDown && slopeDown && rsiCrossedDown && strongGap && rsiNow < 45m)
+			if (crossDown)
 			{
-				var strength = Clamp01(gapRel * 8m * 0.6m + Clamp01((45m - rsiNow) / 20m) * 0.4m);
-				return new("Sell", strength, $"EMA crossover ↓ & RSI falling ({rsiNow:F1})");
+				var validation = SignalValidator.ValidateEMACrossover(closes, emaFast, emaSlow, idx, "Sell");
+				if (!validation.IsValid)
+					return Hold($"EMA sell rejected: {validation.Reason}");
+
+				var rsiValidation = SignalValidator.ValidateRSI(rsiList, closes, idx, "Sell");
+				bool rsiConfirm = rsiValidation.IsValid;
+
+				decimal finalConfidence = rsiConfirm
+					? (validation.Confidence * 0.6m + rsiValidation.Confidence * 0.4m)
+					: validation.Confidence * 0.75m;
+
+				return new("Sell", finalConfidence,
+					$"EMA crossover ↓ validated ({validation.Confidence:P0}) {(rsiConfirm ? "+ RSI" : "")}");
 			}
 
-			return Hold($"No crossover confirmed; RSI={rsiNow:F1}");
+			return Hold($"No EMA crossover");
 		}
 
 		// ─────────────────────────────────────────────────────────────
@@ -70,115 +84,160 @@ namespace TraderBotV1
 			List<decimal?> middle,
 			int rsiPeriod = 14)
 		{
-			if (closes.Count == 0 || upper.Count == 0 || lower.Count == 0)
-				return Hold("no data");
+			if (closes.Count < 30 || upper.Count == 0 || lower.Count == 0)
+				return Hold("insufficient data");
 
-			var price = closes[^1];
-			var ub = upper[^1];
-			var lb = lower[^1];
-			if (ub is null || lb is null) return Hold("bands not ready");
+			int idx = closes.Count - 1;
+			var price = closes[idx];
+			var ub = upper[idx];
+			var lb = lower[idx];
+			var mid = middle[idx];
+
+			if (ub is null || lb is null || mid is null)
+				return Hold("bands not ready");
 
 			var rsiList = Indicators.RSIList(closes, rsiPeriod);
 			if (rsiList.Count == 0) return Hold("rsi not ready");
 			var rsi = rsiList[^1];
 
-			// Trend context
-			bool uptrend = middle.Count > 3 && middle[^1] > middle[^3];
-			bool downtrend = middle.Count > 3 && middle[^1] < middle[^3];
+			var context = SignalValidator.AnalyzeMarketContext(closes, closes, closes, idx);
 
-			// BUY near lower band
-			if (price <= lb && rsi < 30m && !downtrend)
+			// Trend context - avoid mean reversion in strong trends
+			bool strongUptrend = context.IsUptrend && context.TrendStrength > 0.015m;
+			bool strongDowntrend = context.IsDowntrend && context.TrendStrength > 0.015m;
+
+			// BUY near lower band (oversold)
+			if (price <= lb.Value && rsi < 35m)
 			{
-				var depth = Clamp01((lb.Value - price) / (ub.Value - lb.Value + 1e-8m));
-				var strength = Clamp01(depth * 0.6m + Clamp01((30m - rsi) / 20m) * 0.4m);
-				return new("Buy", strength, $"Touched lower band + RSI={rsi:F1}");
+				if (strongDowntrend)
+					return Hold("Strong downtrend - avoid catching falling knife");
+
+				// Validate RSI oversold
+				var rsiValidation = SignalValidator.ValidateRSI(rsiList, closes, idx, "Buy");
+
+				decimal depth = (lb.Value - price) / Math.Max(ub.Value - lb.Value, 1e-8m);
+				decimal strength = Clamp01(depth * 0.5m + (rsiValidation.IsValid ? 0.3m : 0.1m));
+
+				string reason = rsiValidation.IsValid
+					? $"Bollinger buy validated (RSI={rsi:F1}, depth={depth:P1})"
+					: $"Bollinger buy (weak confirmation, RSI={rsi:F1})";
+
+				return new("Buy", strength, reason);
 			}
 
-			// SELL near upper band
-			if (price >= ub && rsi > 70m && !uptrend)
+			// SELL near upper band (overbought)
+			if (price >= ub.Value && rsi > 65m)
 			{
-				var depth = Clamp01((price - ub.Value) / (ub.Value - lb.Value + 1e-8m));
-				var strength = Clamp01(depth * 0.6m + Clamp01((rsi - 70m) / 20m) * 0.4m);
-				return new("Sell", strength, $"Touched upper band + RSI={rsi:F1}");
+				if (strongUptrend)
+					return Hold("Strong uptrend - avoid selling strength");
+
+				var rsiValidation = SignalValidator.ValidateRSI(rsiList, closes, idx, "Sell");
+
+				decimal depth = (price - ub.Value) / Math.Max(ub.Value - lb.Value, 1e-8m);
+				decimal strength = Clamp01(depth * 0.5m + (rsiValidation.IsValid ? 0.3m : 0.1m));
+
+				string reason = rsiValidation.IsValid
+					? $"Bollinger sell validated (RSI={rsi:F1}, depth={depth:P1})"
+					: $"Bollinger sell (weak confirmation, RSI={rsi:F1})";
+
+				return new("Sell", strength, reason);
 			}
 
-			return Hold("inside band or trend too strong");
+			return Hold($"Price in middle band (RSI={rsi:F1})");
 		}
 
 		// ─────────────────────────────────────────────────────────────
-		// 3) ATR Volatility Breakout
+		// 3) ATR Volatility Breakout (with validation)
 		// ─────────────────────────────────────────────────────────────
 		public static StrategySignal AtrBreakout(
-	List<decimal> closes,
-	List<decimal> highs,
-	List<decimal> lows,
-	List<decimal> atr,
-	int emaFast = 9,
-	int emaSlow = 21,
-	int rsiPeriod = 14,
-	decimal k = 1.2m)
+			List<decimal> closes,
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> atr,
+			int emaFast = 9,
+			int emaSlow = 21,
+			int rsiPeriod = 14,
+			decimal k = 1.2m)
 		{
-			if (closes.Count < emaSlow + 2 || atr.Count < emaSlow + 2)
+			if (closes.Count < emaSlow + 5 || atr.Count < emaSlow + 5)
 				return Hold("insufficient data");
 
-			int last = closes.Count - 1;
-			decimal lastClose = closes[last];
-			decimal prevHigh = highs[last - 1];
-			decimal prevLow = lows[last - 1];
-			decimal currAtr = atr[last];
-			if (currAtr <= 0) return Hold("atr invalid");
+			int idx = closes.Count - 1;
+			decimal price = closes[idx];
+			decimal prevHigh = highs[idx - 1];
+			decimal prevLow = lows[idx - 1];
+			decimal currAtr = atr[idx];
 
-			decimal emaFastVal = Indicators.EMA(closes, emaFast);
-			decimal emaSlowVal = Indicators.EMA(closes, emaSlow);
-			bool trendUp = emaFastVal > emaSlowVal;
-			bool trendDown = emaFastVal < emaSlowVal;
+			if (currAtr <= 0) return Hold("invalid ATR");
 
+			var context = SignalValidator.AnalyzeMarketContext(closes, highs, lows, idx);
+
+			// Volatility check
+			decimal volRatio = currAtr / Math.Max(price, 1e-8m);
+			if (volRatio < 0.004m)
+				return Hold($"Insufficient volatility: {volRatio:P2}");
+
+			if (context.VolatilityRatio > 3m)
+				return Hold($"Extreme volatility spike: {context.VolatilityRatio:F2}x");
+
+			var emaFastList = Indicators.EMAList(closes, emaFast);
+			var emaSlowList = Indicators.EMAList(closes, emaSlow);
 			var rsiList = Indicators.RSIList(closes, rsiPeriod);
-			decimal rsi = rsiList.Count > last ? rsiList[last] : 50m;
 
-			// breakout levels
+			bool trendUp = emaFastList[idx] > emaSlowList[idx];
+			bool trendDown = emaFastList[idx] < emaSlowList[idx];
+			decimal rsi = rsiList.Count > idx ? rsiList[idx] : 50m;
+
 			decimal buyThresh = prevHigh + k * currAtr;
 			decimal sellThresh = prevLow - k * currAtr;
 
-			// ATR-based volatility normalization
-			decimal volRatio = currAtr / Math.Max(lastClose, 1e-8m);
-			bool sufficientVol = volRatio > 0.005m; // at least 0.5% ATR
-
-			// RSI confirmation
-			bool momentumOK = rsi > 50m && rsi < 70m;
-
-			// Breakout + confirmation + minimum strength trend
-			if (lastClose > buyThresh && trendUp && momentumOK && sufficientVol)
+			// BUY breakout
+			if (price > buyThresh && trendUp)
 			{
-				var strength = Clamp01(
-					((lastClose - buyThresh) / currAtr) * 0.5m +
-					Clamp01((rsi - 50m) / 20m) * 0.3m +
-					Clamp01(volRatio * 10m) * 0.2m);
+				// Validate breakout
+				if (closes[idx - 1] > buyThresh)
+					return Hold("No clear breakout (already above threshold)");
 
-				// Optional: require candle close above both thresholds (confirm breakout)
-				if (closes[last] < closes[last - 1]) return Hold("retest pending");
+				if (rsi > 75m)
+					return Hold($"Overbought RSI: {rsi:F1}");
 
-				return new("Buy", strength, $"ATR breakout↑ {lastClose:F2}>{buyThresh:F2}, RSI={rsi:F1}, ATR%={volRatio:P1}");
+				// Momentum confirmation
+				bool momentum = closes[idx] > closes[idx - 2];
+				if (!momentum)
+					return Hold("Weak momentum on breakout");
+
+				decimal breakoutStrength = (price - buyThresh) / currAtr;
+				decimal strength = Clamp01(breakoutStrength * 0.3m + 0.5m);
+
+				return new("Buy", strength,
+					$"ATR breakout ↑ validated (${price:F2}>${buyThresh:F2}, RSI={rsi:F1})");
 			}
 
-			if (lastClose < sellThresh && trendDown && rsi < 50m && sufficientVol)
+			// SELL breakdown
+			if (price < sellThresh && trendDown)
 			{
-				var strength = Clamp01(
-					((sellThresh - lastClose) / currAtr) * 0.5m +
-					Clamp01((50m - rsi) / 20m) * 0.3m +
-					Clamp01(volRatio * 10m) * 0.2m);
+				if (closes[idx - 1] < sellThresh)
+					return Hold("No clear breakdown (already below threshold)");
 
-				if (closes[last] > closes[last - 1]) return Hold("retest pending");
+				if (rsi < 25m)
+					return Hold($"Oversold RSI: {rsi:F1}");
 
-				return new("Sell", strength, $"ATR breakdown↓ {lastClose:F2}<{sellThresh:F2}, RSI={rsi:F1}, ATR%={volRatio:P1}");
+				bool momentum = closes[idx] < closes[idx - 2];
+				if (!momentum)
+					return Hold("Weak momentum on breakdown");
+
+				decimal breakdownStrength = (sellThresh - price) / currAtr;
+				decimal strength = Clamp01(breakdownStrength * 0.3m + 0.5m);
+
+				return new("Sell", strength,
+					$"ATR breakdown ↓ validated (${price:F2}<${sellThresh:F2}, RSI={rsi:F1})");
 			}
 
-			return Hold("no confirmed breakout");
+			return Hold($"No breakout (price ${price:F2}, buy>${buyThresh:F2}, sell<${sellThresh:F2})");
 		}
 
-
 		// ─────────────────────────────────────────────────────────────
-		// 4) MACD Divergence (trend-aware with smoothed hist)
+		// 4) MACD Divergence (with validation)
 		// ─────────────────────────────────────────────────────────────
 		public static StrategySignal MacdDivergence(
 			List<decimal> closes,
@@ -186,34 +245,52 @@ namespace TraderBotV1
 			List<decimal> signal,
 			List<decimal> hist)
 		{
-			if (closes.Count < 30 || macd.Count < 30 || signal.Count < 30 || hist.Count < 30)
-				return Hold("insufficient data");
+			if (closes.Count < 60 || macd.Count < 60 || hist.Count < 60)
+				return Hold("Insufficient data for MACD");
 
-			var ema50 = Indicators.EMAList(closes, 50);
-			var ema200 = Indicators.EMAList(closes, 200);
-			bool trendUp = ema50[^1] > ema200[^1];
-			bool trendDown = ema50[^1] < ema200[^1];
+			int idx = closes.Count - 1;
+			var context = SignalValidator.AnalyzeMarketContext(closes, closes, closes, idx);
 
-			decimal mag = Math.Abs(macd[^1] - macd[^2]);
-			bool histUpTone = hist.TakeLast(3).All(h => h > 0);
-			bool histDownTone = hist.TakeLast(3).All(h => h < 0);
+			// Skip in choppy markets
+			if (context.IsSideways || context.RecentRange < 0.008m)
+				return Hold($"Choppy market - MACD unreliable (range={context.RecentRange:P2})");
 
-			bool bullishDiv = closes[^1] < closes[^3] && macd[^1] > macd[^3] && histUpTone && trendUp;
-			bool bearishDiv = closes[^1] > closes[^3] && macd[^1] < macd[^3] && histDownTone && trendDown;
+			// Check for crossover
+			bool crossUp = hist[idx] > 0 && hist[idx - 1] <= 0;
+			bool crossDown = hist[idx] < 0 && hist[idx - 1] >= 0;
 
-			if (bullishDiv)
+			if (crossUp)
 			{
-				var strength = Clamp01(mag * 2m);
-				return new("Buy", strength, $"Bullish MACD divergence; ΔMACD={mag:F3}");
+				var validation = SignalValidator.ValidateMACD(hist, closes, macd, idx, "Buy");
+				if (!validation.IsValid)
+					return Hold($"MACD buy rejected: {validation.Reason}");
+
+				// Check for bullish divergence (bonus)
+				bool bullishDiv = closes[idx] < closes[idx - 5] && macd[idx] > macd[idx - 5];
+
+				decimal confidence = validation.Confidence;
+				if (bullishDiv) confidence = Math.Min(confidence + 0.15m, 1m);
+
+				return new("Buy", confidence,
+					$"MACD buy validated{(bullishDiv ? " + divergence" : "")} (hist={hist[idx]:F4})");
 			}
 
-			if (bearishDiv)
+			if (crossDown)
 			{
-				var strength = Clamp01(mag * 2m);
-				return new("Sell", strength, $"Bearish MACD divergence; ΔMACD={mag:F3}");
+				var validation = SignalValidator.ValidateMACD(hist, closes, macd, idx, "Sell");
+				if (!validation.IsValid)
+					return Hold($"MACD sell rejected: {validation.Reason}");
+
+				bool bearishDiv = closes[idx] > closes[idx - 5] && macd[idx] < macd[idx - 5];
+
+				decimal confidence = validation.Confidence;
+				if (bearishDiv) confidence = Math.Min(confidence + 0.15m, 1m);
+
+				return new("Sell", confidence,
+					$"MACD sell validated{(bearishDiv ? " + divergence" : "")} (hist={hist[idx]:F4})");
 			}
 
-			return Hold("no divergence");
+			return Hold($"No MACD crossover (hist={hist[idx]:F4})");
 		}
 	}
 }
