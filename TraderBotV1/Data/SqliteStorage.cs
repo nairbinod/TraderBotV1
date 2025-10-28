@@ -73,18 +73,19 @@ namespace TraderBotV1.Data
             cmd.ExecuteNonQuery();
         }
 
-        public void InsertTrade(string s, DateTime ts, string side, long qty, decimal price)
+        public void InsertTrade(string s, DateTime ts, string side, long qty, decimal price , DateTime priceOn)
         {
             using var conn = new SqliteConnection(_conn);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO Trades (Symbol,Timestamp,Side,Quantity,Price) VALUES ($s,$t,$side,$q,$p)";
+            cmd.CommandText = "INSERT INTO Trades (Symbol,Timestamp,Side,Quantity,Price,PriceOn) VALUES ($s,$t,$side,$q,$p,$d)";
             cmd.Parameters.AddWithValue("$s", s);
             cmd.Parameters.AddWithValue("$t", ts.ToString("O"));
             cmd.Parameters.AddWithValue("$side", side);
             cmd.Parameters.AddWithValue("$q", qty);
             cmd.Parameters.AddWithValue("$p", price);
-            cmd.ExecuteNonQuery();
+			cmd.Parameters.AddWithValue("$d", priceOn);
+			cmd.ExecuteNonQuery();
         }
 
         public List<string> GetActiveSymbols()

@@ -22,6 +22,7 @@ namespace TraderBotV1
 
 		public void EvaluateAndLog(
 			string symbol,
+			DateTime lastDateTime,
 			List<decimal> closes,
 			List<decimal> highs,
 			List<decimal> lows,
@@ -147,12 +148,12 @@ namespace TraderBotV1
 			{
 				// Conservative entry: wait for slight pullback or confirmation
 				entry = Math.Round(lastClose * 1.001m, 2); // 0.1% above
-				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, 1, entry);
+				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, 1, entry, lastDateTime);
 			}
 			else if (finalSignal == "Sell")
 			{
 				entry = Math.Round(lastClose * 0.999m, 2); // 0.1% below
-				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, 1, entry);
+				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, 1, entry, lastDateTime);
 			}
 
 			// --- Position Sizing (risk-based) ---
@@ -221,7 +222,7 @@ namespace TraderBotV1
 			Console.WriteLine($"   Total Value: ${qty * price:F2}");
 			Console.WriteLine($"   Reason: {reason}");
 
-			_db.InsertTrade(symbol, DateTime.UtcNow, side, (long)qty, price);
+			_db.InsertTrade(symbol, DateTime.UtcNow, side, (long)qty, price, DateTime.UtcNow);
 		}
 	}
 }

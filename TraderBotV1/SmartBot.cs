@@ -155,9 +155,11 @@ namespace TraderBotV1
 					PersistPriceData(symbol, bars);
 				}
 
+				DateTime lastBarTime = bars.Max(b => b.TimestampUtc);
+
 				// Run trading analysis
 				Console.WriteLine($"   🔬 Analyzing {symbol} ({bars.Count} bars)...");
-				_engine.EvaluateAndLog(symbol, closes, highs, lows, volumes);
+				_engine.EvaluateAndLog(symbol, lastBarTime, closes, highs, lows, volumes);
 
 				result.Status = "Success";
 				result.Message = $"Analyzed {bars.Count} bars";
