@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Drawing;
 using System.Linq;
 using TraderBotV1.Data;
 
@@ -11,22 +9,27 @@ namespace TraderBotV1
 	{
 		private readonly SqliteStorage _db;
 		private readonly decimal _riskPercent;
-		private const int MIN_VOTES_REQUIRED = 3; // Require 3+ confirmations
-		private const decimal MIN_CONFIDENCE = 0.6m; // Minimum 60% confidence
+		private readonly EmailNotificationService? _emailService;
+		private readonly List<TradingSignal> _sessionSignals;
 
-		public TradeEngine(SqliteStorage db, decimal riskPercent = 0.01m)
+		private const int MIN_VOTES_REQUIRED = 3;
+		private const decimal MIN_CONFIDENCE = 0.6m;
+
+		public TradeEngine(SqliteStorage db, decimal riskPercent = 0.01m, EmailNotificationService? emailService = null)
 		{
 			_db = db;
 			_riskPercent = riskPercent;
+			_emailService = emailService;
+			_sessionSignals = new List<TradingSignal>();
 		}
 
 		public void EvaluateAndLog(
 			string symbol,
-			DateTime lastDateTime,
 			List<decimal> closes,
 			List<decimal> highs,
 			List<decimal> lows,
-			List<decimal>? volumes = null)
+			List<decimal>? volumes = null,
+			List<DateTime>? timestamps = null)  // NEW: Accept bar timestamps
 		{
 			if (closes.Count < 60)
 			{
@@ -103,7 +106,6 @@ namespace TraderBotV1
 				}
 			}
 
-			// Calculate average confidence
 			decimal avgBuyConfidence = buyVotes > 0 ? buyScore / buyVotes : 0m;
 			decimal avgSellConfidence = sellVotes > 0 ? sellScore / sellVotes : 0m;
 
@@ -138,7 +140,7 @@ namespace TraderBotV1
 				finalReason = $"Insufficient confirmation (buy:{buyVotes}, sell:{sellVotes}, need:{requiredVotes})";
 			}
 
-			// --- Entry Point Calculation ---
+			// --- Entry Point & Position Sizing ---
 			decimal lastClose = closes[idx];
 			decimal atrVal = atr.LastOrDefault();
 			decimal entry = lastClose;
@@ -146,20 +148,33 @@ namespace TraderBotV1
 
 			if (finalSignal == "Buy")
 			{
-				// Conservative entry: wait for slight pullback or confirmation
-				entry = Math.Round(lastClose * 1.001m, 2); // 0.1% above
-				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, 1, entry, lastDateTime);
+				entry = Math.Round(lastClose * 1.001m, 2);
 			}
 			else if (finalSignal == "Sell")
 			{
-				entry = Math.Round(lastClose * 0.999m, 2); // 0.1% below
-				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, 1, entry, lastDateTime);
+				entry = Math.Round(lastClose * 0.999m, 2);
 			}
 
-			// --- Position Sizing (risk-based) ---
-			decimal equity = 100000m; // Simulated account
+			decimal equity = 100000m;
 			decimal riskValue = equity * _riskPercent;
 			decimal qty = Math.Max(1, Math.Floor(riskValue / stopDistance));
+
+			// --- Store signal for email notification ---
+			if (finalSignal == "Buy")
+			{
+				_sessionSignals.Add(new TradingSignal
+				{
+					Symbol = symbol,
+					Signal = finalSignal,
+					Confidence = finalConfidence,
+					EntryPrice = entry,
+					Quantity = qty,
+					StopDistance = stopDistance,
+					ConfirmedStrategies = buyVotes,
+					Reason = finalReason,
+					Timestamp = DateTime.UtcNow
+				});
+			}
 
 			// --- Detailed Logging ---
 			LogAllSignals(symbol, new Dictionary<string, StrategySignal>
@@ -176,27 +191,87 @@ namespace TraderBotV1
 			{
 				_db.InsertSignal(symbol, DateTime.UtcNow, "EntryPoint", finalSignal,
 					$"entry=${entry:F2}, qty={qty:F0}, stop=${stopDistance:F2}");
+
+				// Get the bar date for this trade (last bar's timestamp)
+				DateTime? barDate = timestamps != null && timestamps.Count > 0
+					? timestamps[timestamps.Count - 1]
+					: null;
+
+				// Insert trade record for Buy or Sell signals
+				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, (long)qty, entry, barDate);
 			}
 
 			// --- Console Output ---
-			Console.WriteLine($"\n{'✅'} {symbol} FINAL DECISION:");
+			Console.WriteLine($"\n✅ {symbol} FINAL DECISION:");
 			Console.WriteLine($"   Signal: {finalSignal}");
 			Console.WriteLine($"   Confidence: {finalConfidence:P0}");
 			Console.WriteLine($"   Reason: {finalReason}");
 
-			//if (finalSignal != "Hold")
-			//{
-			//	Console.WriteLine($"   Entry: ${entry:F2}");
-			//	Console.WriteLine($"   Quantity: {qty:F0}");
-			//	Console.WriteLine($"   Stop Distance: ${stopDistance:F2}");
-			//	Console.WriteLine($"   Risk: ${riskValue:F2} ({_riskPercent:P1} of equity)");
+			if (finalSignal != "Hold")
+			{
+				Console.WriteLine($"   Entry: ${entry:F2}");
+				Console.WriteLine($"   Quantity: {qty:F0}");
+				Console.WriteLine($"   Stop Distance: ${stopDistance:F2}");
+				Console.WriteLine($"   Risk: ${riskValue:F2} ({_riskPercent:P1} of equity)");
 
-			//	SimulateOrder(symbol, finalSignal, qty, entry, finalReason);
-			//}
-			//else
-			//{
-			//	Console.WriteLine($"   Action: HOLD - {finalReason}");
-			//}
+				if (timestamps != null && timestamps.Count > 0)
+				{
+					Console.WriteLine($"   Bar Date: {timestamps[timestamps.Count - 1]:yyyy-MM-dd HH:mm:ss}");
+				}
+			}
+			else
+			{
+				Console.WriteLine($"   Action: HOLD - {finalReason}");
+			}
+		}
+
+		/// <summary>
+		/// Sends email notification for all buy signals collected during the session
+		/// </summary>
+		public async System.Threading.Tasks.Task SendSessionNotificationsAsync(string recipientEmail)
+		{
+			if (_emailService == null)
+			{
+				Console.WriteLine("⚠️ Email service not configured");
+				return;
+			}
+
+			var buySignals = _sessionSignals.Where(s => s.Signal == "Buy").ToList();
+
+			if (buySignals.Count == 0)
+			{
+				Console.WriteLine("📧 No buy signals to send");
+				return;
+			}
+
+			Console.WriteLine($"\n📧 Sending email notification for {buySignals.Count} buy signal(s)...");
+
+			bool success = await _emailService.SendBuySignalNotificationAsync(recipientEmail, buySignals);
+
+			if (success)
+			{
+				Console.WriteLine($"✅ Email notification sent successfully to {recipientEmail}");
+			}
+			else
+			{
+				Console.WriteLine($"❌ Failed to send email notification");
+			}
+		}
+
+		/// <summary>
+		/// Gets all signals collected during this session
+		/// </summary>
+		public List<TradingSignal> GetSessionSignals()
+		{
+			return new List<TradingSignal>(_sessionSignals);
+		}
+
+		/// <summary>
+		/// Clears the session signals (useful for running multiple sessions)
+		/// </summary>
+		public void ClearSessionSignals()
+		{
+			_sessionSignals.Clear();
 		}
 
 		private void LogAllSignals(string symbol, Dictionary<string, StrategySignal> signals)
@@ -212,7 +287,8 @@ namespace TraderBotV1
 			}
 		}
 
-		private void SimulateOrder(string symbol, string side, decimal qty, decimal price, string reason)
+		private void SimulateOrder(string symbol, string side, decimal qty, decimal price,
+			string reason, DateTime? barDate = null)
 		{
 			Console.WriteLine($"\n🎯 SIMULATED ORDER:");
 			Console.WriteLine($"   Symbol: {symbol}");
@@ -222,7 +298,12 @@ namespace TraderBotV1
 			Console.WriteLine($"   Total Value: ${qty * price:F2}");
 			Console.WriteLine($"   Reason: {reason}");
 
-			_db.InsertTrade(symbol, DateTime.UtcNow, side, (long)qty, price, DateTime.UtcNow);
+			if (barDate.HasValue)
+			{
+				Console.WriteLine($"   Bar Date: {barDate.Value:yyyy-MM-dd HH:mm:ss}");
+			}
+
+			_db.InsertTrade(symbol, DateTime.UtcNow, side, (long)qty, price, barDate);
 		}
 	}
 }

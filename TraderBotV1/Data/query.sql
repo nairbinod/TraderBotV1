@@ -1,9 +1,4 @@
-SELECT Id,
-       Symbol,
-       Timestamp,
-       Side,
-       Quantity,
-       Price
+SELECT *
   FROM Trades;
   
 select * from signals 

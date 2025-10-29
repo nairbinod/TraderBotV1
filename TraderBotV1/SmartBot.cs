@@ -16,12 +16,12 @@ namespace TraderBotV1
 		private const int MIN_BARS_REQUIRED = 60; // Minimum bars needed for analysis
 		private const int MAX_CONCURRENT_SYMBOLS = 10; // Limit concurrent processing
 
-		public SmartBot(IMarketDataProvider dataProvider, SqliteStorage db, Config cfg)
+		public SmartBot(IMarketDataProvider dataProvider, SqliteStorage db, Config cfg, EmailNotificationService? emailService = null)
 		{
 			_dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
 			_db = db ?? throw new ArgumentNullException(nameof(db));
 			_cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
-			_engine = new TradeEngine(db, cfg.RiskPercent);
+			_engine = new TradeEngine(db, cfg.RiskPercent, emailService);
 		}
 
 		public async Task RunAsync()
@@ -66,6 +66,7 @@ namespace TraderBotV1
 				}
 			}
 
+			await _engine.SendSessionNotificationsAsync("nairbinod@gmail.com");
 			// Print summary
 			PrintSummary(results);
 		}
@@ -155,11 +156,9 @@ namespace TraderBotV1
 					PersistPriceData(symbol, bars);
 				}
 
-				DateTime lastBarTime = bars.Max(b => b.TimestampUtc);
-
 				// Run trading analysis
 				Console.WriteLine($"   🔬 Analyzing {symbol} ({bars.Count} bars)...");
-				_engine.EvaluateAndLog(symbol, lastBarTime, closes, highs, lows, volumes);
+				_engine.EvaluateAndLog(symbol, closes, highs, lows, volumes);
 
 				result.Status = "Success";
 				result.Message = $"Analyzed {bars.Count} bars";
