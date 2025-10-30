@@ -9,7 +9,7 @@ namespace TraderBotV1
 	public class SmartBot
 	{
 		private readonly IMarketDataProvider _dataProvider;
-		private readonly TradeEngine _engine;
+		private readonly TradeEngineEnhanced _engine;
 		private readonly SqliteStorage _db;
 		private readonly Config _cfg;
 
@@ -21,7 +21,7 @@ namespace TraderBotV1
 			_dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
 			_db = db ?? throw new ArgumentNullException(nameof(db));
 			_cfg = cfg ?? throw new ArgumentNullException(nameof(cfg));
-			_engine = new TradeEngine(db, cfg.RiskPercent, emailService);
+			_engine = new TradeEngineEnhanced(db, cfg.RiskPercent, emailService);
 		}
 
 		public async Task RunAsync()

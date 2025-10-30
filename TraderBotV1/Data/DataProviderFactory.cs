@@ -72,7 +72,7 @@ namespace TraderBotV1.Data
 		private readonly IAlpacaDataClient _dataClient;
 		private const decimal MIN_VOLUME_THRESHOLD_RATIO = 0.15m; // 15% of average
 		private const long MIN_DAILY_VOLUME = 100000; // Minimum for daily bars
-		private const int LOOKBACK_BUFFER_DAYS = 60; // Days to look back from now
+		private const int LOOKBACK_BUFFER_DAYS = 0; // Days to look back from now
 
 		public AlpacaDataProvider(string apiKey, string apiSecret, bool usePaper = true)
 		{
@@ -93,7 +93,8 @@ namespace TraderBotV1.Data
 				throw new ArgumentOutOfRangeException(nameof(daysHistory), "Must be positive");
 
 			// Calculate date range (exclude recent days to avoid partial data)
-			var end = DateTime.Now.AddHours(-1);// AddDays(-LOOKBACK_BUFFER_DAYS);
+			DateTime endDate = DateTime.Now.Date.AddDays(-LOOKBACK_BUFFER_DAYS);
+			var end = endDate.AddHours(-1);// AddDays(-LOOKBACK_BUFFER_DAYS);
 			var start = end.AddDays(-daysHistory);
 
 			// Determine timeframe based on history length
