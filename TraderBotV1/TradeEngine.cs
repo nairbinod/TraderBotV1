@@ -12,8 +12,8 @@ namespace TraderBotV1
 		private readonly EmailNotificationService? _emailService;
 		private readonly List<TradingSignal> _sessionSignals;
 
-		private const int MIN_VOTES_REQUIRED = 3;
-		private const decimal MIN_CONFIDENCE = 0.6m;
+		private const int MIN_VOTES_REQUIRED = 4;
+		private const decimal MIN_CONFIDENCE = 0.7m;
 
 		public TradeEngine(SqliteStorage db, decimal riskPercent = 0.01m, EmailNotificationService? emailService = null)
 		{
@@ -84,8 +84,20 @@ namespace TraderBotV1
 			var s9 = StrategiesExtended.PivotReversal(highs, lows, closes);
 			var s10 = StrategiesExtended.StochRsiReversal(closes, 14, 14, 3, 3);
 
-			// --- Weighted Consensus Analysis ---
-			var allSignals = new[] { s1, s2, s3, s4, s5, s6, s7, s8, s9, s10 };
+			// --- NEW: Add Advanced Strategies ---
+			var s11 = StrategiesAdvanced.VWAPStrategy(closes, highs, lows, volumes ?? new List<decimal>());
+			var s12 = StrategiesAdvanced.IchimokuCloud(closes, highs, lows);
+			var s13 = StrategiesAdvanced.PriceActionTrend(closes, highs, lows);
+			var s14 = StrategiesAdvanced.SqueezeMomentum(closes, highs, lows);
+			var s15 = StrategiesAdvanced.MoneyFlowIndex(closes, highs, lows, volumes ?? new List<decimal>());
+			var s16 = StrategiesAdvanced.ParabolicSAR(closes, highs, lows);
+			var s17 = StrategiesAdvanced.TripleEMA(closes, 8, 21, 50);
+
+			// Update consensus
+			var allSignals = new[] {
+				s1, s2, s3, s4, s5, s6, s7, s8, s9, s10,
+				s11, s12, s13, s14, s15, s16, s17  // NEW!
+			};
 
 			decimal buyScore = 0m;
 			decimal sellScore = 0m;
@@ -181,7 +193,10 @@ namespace TraderBotV1
 			{
 				{ "EMA+RSI", s1 }, { "Bollinger", s2 }, { "ATR", s3 }, { "MACD", s4 },
 				{ "ADX", s5 }, { "Volume", s6 }, { "CCI", s7 }, { "Donchian", s8 },
-				{ "Pivot", s9 }, { "StochRSI", s10 }
+				{ "Pivot", s9 }, { "StochRSI", s10 },
+				    // NEW Advanced Strategies
+				{ "VWAP", s11 }, { "Ichimoku", s12 }, { "PriceAction", s13 },
+				{ "Squeeze", s14 }, { "MFI", s15 }, { "SAR", s16 }, { "TripleEMA", s17 }
 			});
 
 			_db.InsertSignal(symbol, DateTime.UtcNow, "Consensus", finalSignal,
