@@ -16,9 +16,9 @@ namespace TraderBotV1
 		private readonly List<TradingSignal> _sessionSignals;
 
 		// ENHANCED THRESHOLDS
-		private const int MIN_VOTES_REQUIRED = 5;           // Increased from 4
-		private const decimal MIN_CONFIDENCE = 0.75m;       // Increased from 0.7
-		private const decimal MIN_QUALITY_SCORE = 0.65m;    // NEW: Minimum quality score
+		private const int MIN_VOTES_REQUIRED = 3;           // Decreased from 4
+		private const decimal MIN_CONFIDENCE = 0.7m;       // Decreased from 0.75
+		private const decimal MIN_QUALITY_SCORE = 0.7m;    // NEW: Minimum quality score
 		private const int MIN_STRATEGIES_FOR_ENTRY = 3;     // NEW: Min strategies agreeing
 
 		public TradeEngineEnhanced(SqliteStorage db, decimal riskPercent = 0.01m,
@@ -57,7 +57,7 @@ namespace TraderBotV1
 			// STEP 1: MARKET REGIME ANALYSIS (CRITICAL FILTER)
 			// ═══════════════════════════════════════════════════════════════
 
-			var regime = IndicatorsEnhanced.DetectMarketRegime(closes, highs, lows);
+			var regime = Indicators.DetectMarketRegime(closes, highs, lows);
 
 			Console.WriteLine($"\n📊 {symbol} Market Analysis:");
 			Console.WriteLine($"   Regime: {regime.Description} (confidence: {regime.RegimeConfidence:P0})");
@@ -65,25 +65,26 @@ namespace TraderBotV1
 			Console.WriteLine($"   Volatility: {regime.VolatilityLevel:P2}");
 
 			// Skip in unfavorable conditions
-			if (regime.Regime == IndicatorsEnhanced.MarketRegime.Volatile)
+			if (regime.Regime == Indicators.MarketRegime.Volatile)
 			{
 				Console.WriteLine($"⚠️ Extreme volatility - skipping {symbol}");
 				_db.InsertSignal(symbol, DateTime.UtcNow, "Regime", "Hold", "Extreme volatility");
 				return;
 			}
 
-			if (regime.Regime == IndicatorsEnhanced.MarketRegime.Quiet)
-			{
-				Console.WriteLine($"⚠️ Very quiet market - skipping {symbol}");
-				_db.InsertSignal(symbol, DateTime.UtcNow, "Regime", "Hold", "Quiet market");
-				return;
-			}
+			//Commenting 10/30/2025 - Skipping quiet markets may miss opportunities 
+			//if (regime.Regime == Indicators.MarketRegime.Quiet)
+			//{
+			//	Console.WriteLine($"⚠️ Very quiet market - skipping {symbol}");
+			//	_db.InsertSignal(symbol, DateTime.UtcNow, "Regime", "Hold", "Quiet market");
+			//	return;
+			//}
 
 			// ═══════════════════════════════════════════════════════════════
 			// STEP 2: MULTI-TIMEFRAME CONFIRMATION
 			// ═══════════════════════════════════════════════════════════════
 
-			var mtf = IndicatorsEnhanced.AnalyzeMultiTimeframe(closes, highs, lows);
+			var mtf = Indicators.AnalyzeMultiTimeframe(closes, highs, lows);
 			Console.WriteLine($"   MTF Analysis: {mtf.Reason}");
 			Console.WriteLine($"   MTF Confidence: {mtf.Confidence:P0}");
 
@@ -103,15 +104,15 @@ namespace TraderBotV1
 			// ═══════════════════════════════════════════════════════════════
 
 			// NEW Enhanced Strategies (Higher Priority)
-			var s1 = StrategiesEnhanced.TrendFollowingMTF(closes, highs, lows);
+			var s1 = Strategies.TrendFollowingMTF(closes, highs, lows);
 			var s2 = volumes != null ?
-				StrategiesEnhanced.MeanReversionSR(closes, highs, lows, volumes) :
+				Strategies.MeanReversionSR(closes, highs, lows, volumes) :
 				Hold("No volume data");
 			var s3 = volumes != null ?
-				StrategiesEnhanced.BreakoutWithVolume(opens, closes, highs, lows, volumes) :
+				Strategies.BreakoutWithVolume(opens, closes, highs, lows, volumes) :
 				Hold("No volume data");
 			var s4 = volumes != null ?
-				StrategiesEnhanced.MomentumReversalDivergence(closes, highs, lows, volumes) :
+				Strategies.MomentumReversalDivergence(closes, highs, lows, volumes) :
 				Hold("No volume data");
 
 			// Original Validated Strategies
@@ -121,18 +122,18 @@ namespace TraderBotV1
 			var s8 = Strategies.MacdDivergence(closes, macd, macdSig, macdHist);
 
 			// Extended Strategies
-			var s9 = StrategiesExtended.AdxFilter(highs, lows, closes, 14, 25m);
+			var s9 = Strategies.AdxFilter(highs, lows, closes, 14, 25m);
 			var s10 = volumes != null ?
-				StrategiesExtended.VolumeConfirm(closes, volumes, 20, 1.5m) :
+				Strategies.VolumeConfirm(closes, volumes, 20, 2.0m): // STRICTER: 2.0x spike required :
 				Hold("No volume");
-			var s11 = StrategiesExtended.DonchianBreakout(highs, lows, closes, 20);
+			var s11 = Strategies.DonchianBreakout(highs, lows, closes, 20);
 
 			// Advanced Strategies (Selected Best Performers)
 			var s12 = volumes != null ?
-				StrategiesAdvanced.VWAPStrategy(closes, highs, lows, volumes) :
+				Strategies.VWAPStrategy(closes, highs, lows, volumes) :
 				Hold("No volume");
-			var s13 = StrategiesAdvanced.IchimokuCloud(closes, highs, lows);
-			var s14 = StrategiesAdvanced.PriceActionTrend(closes, highs, lows);
+			var s13 = Strategies.IchimokuCloud(closes, highs, lows);
+			var s14 = Strategies.PriceActionTrend(closes, highs, lows);
 
 			var allSignals = new[] { s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14 };
 
@@ -199,7 +200,7 @@ namespace TraderBotV1
 			decimal qualityScore = 0m;
 			if (preliminaryDirection != "Hold")
 			{
-				qualityScore = StrategiesEnhanced.CalculateTradeQualityScore(
+				qualityScore = Strategies.CalculateTradeQualityScore(
 					opens, closes, highs, lows, volumes ?? new List<decimal>(), preliminaryDirection);
 
 				Console.WriteLine($"   Trade Quality Score: {qualityScore:P0}");
@@ -273,7 +274,7 @@ namespace TraderBotV1
 
 			if (finalSignal != "Hold")
 			{
-				var srLevels = IndicatorsEnhanced.FindSupportResistance(highs, lows, closes);
+				var srLevels = Indicators.FindSupportResistance(highs, lows, closes);
 
 				if (finalSignal == "Buy")
 				{

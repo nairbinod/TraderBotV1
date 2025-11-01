@@ -93,12 +93,12 @@ namespace TraderBotV1.Data
 				throw new ArgumentOutOfRangeException(nameof(daysHistory), "Must be positive");
 
 			// Calculate date range (exclude recent days to avoid partial data)
-			DateTime endDate = DateTime.Now.Date.AddDays(-LOOKBACK_BUFFER_DAYS);
+			DateTime endDate = DateTime.Now.AddDays(-LOOKBACK_BUFFER_DAYS);
 			var end = endDate.AddHours(-1);// AddDays(-LOOKBACK_BUFFER_DAYS);
 			var start = end.AddDays(-daysHistory);
 
 			// Determine timeframe based on history length
-			var timeFrame = daysHistory <= 60 ? BarTimeFrame.Hour : BarTimeFrame.Day;
+			var timeFrame = daysHistory <= 90 ? BarTimeFrame.Hour : BarTimeFrame.Day;
 
 			// Fetch all bars (handle pagination)
 			var allBars = await FetchAllBarsAsync(symbol, start, end, timeFrame);

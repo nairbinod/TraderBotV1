@@ -13,44 +13,80 @@ namespace TraderBotV1
 		// 1) ADX Trend Filter (with validation)
 		// ─────────────────────────────────────────────────────────────
 		public static StrategySignal AdxFilter(
-			List<decimal> highs,
-			List<decimal> lows,
-			List<decimal> closes,
-			int period = 14,
-			decimal threshold = 25m)
+					List<decimal> highs,
+					List<decimal> lows,
+					List<decimal> closes,
+					int period = 14,
+					decimal threshold = 30m)  // INCREASED from 25
 		{
 			var (adx, diPlus, diMinus) = IndicatorsExtended.ADXList(highs, lows, closes, period);
 			if (adx.Count < 5) return Hold("ADX insufficient data");
 
 			int idx = adx.Count - 1;
+			decimal adxNow = adx[idx];
+			decimal adxPrev = adx[idx - 1];
+
 			var context = SignalValidator.AnalyzeMarketContext(closes, highs, lows, idx);
 
-			// Skip in low volatility
-			if (context.RecentRange < 0.008m)
+			// STRICTER: Skip if volatility too low
+			if (context.RecentRange < 0.01m)  // INCREASED from 0.008
 				return Hold($"Low volatility: range={context.RecentRange:P2}");
 
-			// Check for uptrend
-			if (diPlus[idx] > diMinus[idx] + 5m)
+			// STRICTER: ADX must be STRONG
+			if (adxNow < threshold)
 			{
-				var validation = ExtendedSignalValidator.ValidateADX(adx, diPlus, diMinus, idx, "Buy", threshold);
-				if (!validation.IsValid)
-					return Hold($"ADX buy rejected: {validation.Reason}");
-
-				return new("Buy", validation.Confidence, validation.Reason);
+				return Hold($"ADX too weak: {adxNow:F1} < {threshold}");
 			}
 
-			// Check for downtrend
-			if (diMinus[idx] > diPlus[idx] + 5m)
+			// NEW: ADX must be rising (strengthening trend)
+			if (adxNow <= adxPrev)
 			{
-				var validation = ExtendedSignalValidator.ValidateADX(adx, diPlus, diMinus, idx, "Sell", threshold);
-				if (!validation.IsValid)
-					return Hold($"ADX sell rejected: {validation.Reason}");
-
-				return new("Sell", validation.Confidence, validation.Reason);
+				return Hold($"ADX not rising ({adxNow:F1} vs {adxPrev:F1})");
 			}
 
-			return Hold($"ADX neutral (DI+={diPlus[idx]:F1}, DI-={diMinus[idx]:F1})");
+			// STRICTER: DI+ and DI- separation must be CLEAR
+			decimal diSeparation = Math.Abs(diPlus[idx] - diMinus[idx]);
+			if (diSeparation < 10m)  // INCREASED from 5
+			{
+				return Hold($"DI separation too small: {diSeparation:F1} (need >10)");
+			}
+
+			// Check for uptrend - STRICTER
+			if (diPlus[idx] > diMinus[idx])
+			{
+				// STRICTER: DI+ must be clearly dominant
+				if (diPlus[idx] < diMinus[idx] + 10m)
+					return Hold($"DI+ not dominant enough: {diPlus[idx]:F1} vs {diMinus[idx]:F1}");
+
+				// NEW: DI+ must be rising
+				if (idx > 0 && diPlus[idx] <= diPlus[idx - 1])
+					return Hold("DI+ not rising");
+
+				// STRICTER: Lower confidence
+				decimal strength = Clamp01((adxNow - threshold) / 25m + 0.5m);  // REDUCED
+
+				return new("Buy", strength,
+					$"Strong uptrend (ADX={adxNow:F1}, DI+={diPlus[idx]:F1})");
+			}
+
+			// Check for downtrend - STRICTER
+			if (diMinus[idx] > diPlus[idx])
+			{
+				if (diMinus[idx] < diPlus[idx] + 10m)
+					return Hold($"DI- not dominant enough: {diMinus[idx]:F1} vs {diPlus[idx]:F1}");
+
+				if (idx > 0 && diMinus[idx] <= diMinus[idx - 1])
+					return Hold("DI- not rising");
+
+				decimal strength = Clamp01((adxNow - threshold) / 25m + 0.5m);
+
+				return new("Sell", strength,
+					$"Strong downtrend (ADX={adxNow:F1}, DI-={diMinus[idx]:F1})");
+			}
+
+			return Hold($"ADX unclear (DI+={diPlus[idx]:F1}, DI-={diMinus[idx]:F1})");
 		}
+
 
 		// ─────────────────────────────────────────────────────────────
 		// 2) Volume Confirmation (with validation)

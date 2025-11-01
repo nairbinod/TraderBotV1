@@ -74,9 +74,9 @@ namespace TraderBotV1
 		// 2) Ichimoku Cloud Strategy (Simplified)
 		// ═══════════════════════════════════════════════════════════════
 		public static StrategySignal IchimokuCloud(
-			List<decimal> closes,
-			List<decimal> highs,
-			List<decimal> lows)
+					List<decimal> closes,
+					List<decimal> highs,
+					List<decimal> lows)
 		{
 			if (closes.Count < 52) return Hold("Insufficient data for Ichimoku");
 
@@ -85,6 +85,13 @@ namespace TraderBotV1
 			decimal price = closes.Last();
 			decimal cloudTop = Math.Max(senkouA, senkouB);
 			decimal cloudBottom = Math.Min(senkouA, senkouB);
+			decimal cloudThickness = cloudTop - cloudBottom;
+
+			// NEW: Cloud must have minimum thickness (avoid thin clouds)
+			if (cloudThickness / price < 0.01m)  // Less than 1% thick
+			{
+				return Hold($"Cloud too thin: {cloudThickness / price:P2} (need >1%)");
+			}
 
 			// Determine trend
 			bool bullishCloud = senkouA > senkouB;
@@ -92,52 +99,91 @@ namespace TraderBotV1
 			bool priceBelowCloud = price < cloudBottom;
 			bool tenkanAboveKijun = tenkan > kijun;
 
-			// Strong buy: Price above bullish cloud, Tenkan above Kijun
+			// STRICTER: Check TK separation
+			decimal tkSeparation = Math.Abs(tenkan - kijun) / kijun;
+			if (tkSeparation < 0.015m)  // Need 1.5%+ separation
+			{
+				return Hold($"TK lines too close: {tkSeparation:P2}");
+			}
+
+			// STRICTER: Price must be CLEARLY above/below cloud
+			if (priceAboveCloud)
+			{
+				decimal distanceFromCloud = (price - cloudTop) / price;
+				if (distanceFromCloud < 0.01m)  // Must be 1%+ above
+				{
+					return Hold($"Price too close to cloud top: {distanceFromCloud:P2}");
+				}
+			}
+			else if (priceBelowCloud)
+			{
+				decimal distanceFromCloud = (cloudBottom - price) / price;
+				if (distanceFromCloud < 0.01m)
+				{
+					return Hold($"Price too close to cloud bottom: {distanceFromCloud:P2}");
+				}
+			}
+
+			// STRICTER: Strong buy - all conditions must be met
 			if (priceAboveCloud && bullishCloud && tenkanAboveKijun)
 			{
-				decimal strength = Clamp01((price - cloudTop) / price * 20m + 0.5m);
-				return new("Buy", strength, $"Bullish Ichimoku: Price above cloud, TK cross bullish");
+				// NEW: Check price momentum
+				int idx = closes.Count - 1;
+				bool strongMomentum = closes[idx] > closes[idx - 3];
+
+				if (!strongMomentum)
+				{
+					return Hold("Price momentum weak despite bullish Ichimoku");
+				}
+
+				// STRICTER: Tenkan must be rising
+				// (Would need previous tenkan value - approximate with price)
+				if (price < tenkan * 1.005m)
+				{
+					return Hold("Price not above Tenkan");
+				}
+
+				// STRICTER: Lower confidence
+				decimal strength = Clamp01((price - cloudTop) / price * 15m + 0.4m);  // REDUCED
+
+				return new("Buy", strength,
+					$"Bullish Ichimoku (price {(price - cloudTop) / price:P1} above cloud)");
 			}
 
-			// Strong sell: Price below bearish cloud, Tenkan below Kijun
+			// STRICTER: Strong sell - all conditions must be met
 			if (priceBelowCloud && !bullishCloud && !tenkanAboveKijun)
 			{
-				decimal strength = Clamp01((cloudBottom - price) / price * 20m + 0.5m);
-				return new("Sell", strength, $"Bearish Ichimoku: Price below cloud, TK cross bearish");
+				int idx = closes.Count - 1;
+				bool strongMomentum = closes[idx] < closes[idx - 3];
+
+				if (!strongMomentum)
+				{
+					return Hold("Price momentum weak despite bearish Ichimoku");
+				}
+
+				if (price > tenkan * 0.995m)
+				{
+					return Hold("Price not below Tenkan");
+				}
+
+				decimal strength = Clamp01((cloudBottom - price) / price * 15m + 0.4m);
+
+				return new("Sell", strength,
+					$"Bearish Ichimoku (price {(cloudBottom - price) / price:P1} below cloud)");
 			}
 
-			// Breakout buy: Price crossing above cloud
-			if (closes[closes.Count - 2] <= cloudTop && price > cloudTop && bullishCloud)
-			{
-				return new("Buy", 0.75m, "Ichimoku cloud breakout bullish");
-			}
-
-			// Breakdown sell: Price crossing below cloud
-			if (closes[closes.Count - 2] >= cloudBottom && price < cloudBottom && !bullishCloud)
-			{
-				return new("Sell", 0.75m, "Ichimoku cloud breakdown bearish");
-			}
-
-			return Hold("Ichimoku neutral (inside cloud or mixed signals)");
+			// NO MORE BREAKOUT SIGNALS - Too prone to false signals
+			return Hold("Ichimoku not in strong setup");
 		}
 
 		private static (decimal tenkan, decimal kijun, decimal senkouA, decimal senkouB)
 			CalculateIchimoku(List<decimal> highs, List<decimal> lows, List<decimal> closes)
 		{
 			int idx = closes.Count - 1;
-
-			// Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2
 			decimal tenkan = (highs.Skip(idx - 8).Take(9).Max() + lows.Skip(idx - 8).Take(9).Min()) / 2m;
-
-			// Kijun-sen (Base Line): (26-period high + 26-period low)/2
 			decimal kijun = (highs.Skip(idx - 25).Take(26).Max() + lows.Skip(idx - 25).Take(26).Min()) / 2m;
-
-			// Senkou Span A: (Tenkan + Kijun)/2 projected 26 periods ahead
 			decimal senkouA = (tenkan + kijun) / 2m;
-
-			// Senkou Span B: (52-period high + 52-period low)/2 projected 26 periods ahead
 			decimal senkouB = (highs.Skip(idx - 51).Take(52).Max() + lows.Skip(idx - 51).Take(52).Min()) / 2m;
-
 			return (tenkan, kijun, senkouA, senkouB);
 		}
 

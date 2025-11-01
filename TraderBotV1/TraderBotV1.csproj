@@ -8,6 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="IndicatorsEnhanced.cs" />
+    <Compile Remove="Indicators_Extended.cs" />
+    <Compile Remove="StrategiesAdvanced.cs" />
+    <Compile Remove="StrategiesEnhanced.cs" />
+    <Compile Remove="Strategies_Extended.cs" />
+    <Compile Remove="TradeEngine.cs" />
     <Compile Remove="TradeLogger.cs" />
     <Compile Remove="TradeLogic.cs" />
     <Compile Remove="TradingBot.cs" />

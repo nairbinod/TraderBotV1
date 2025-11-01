@@ -18,9 +18,9 @@ namespace TraderBotV1
 		// ═══════════════════════════════════════════════════════════════
 
 		public static StrategySignal TrendFollowingMTF(
-			List<decimal> closes,
-			List<decimal> highs,
-			List<decimal> lows)
+					List<decimal> closes,
+					List<decimal> highs,
+					List<decimal> lows)
 		{
 			if (closes.Count < 200)
 				return Hold("Insufficient data for MTF analysis");
@@ -28,20 +28,31 @@ namespace TraderBotV1
 			// Detect market regime
 			var regime = IndicatorsEnhanced.DetectMarketRegime(closes, highs, lows);
 
-			// Only trade in trending markets
-			if (regime.Regime == IndicatorsEnhanced.MarketRegime.Ranging ||
-				regime.Regime == IndicatorsEnhanced.MarketRegime.Quiet)
+			// STRICTER: Only trade in STRONG trending markets
+			if (regime.Regime != IndicatorsEnhanced.MarketRegime.StrongTrending)
 			{
-				return Hold($"Market is {regime.Description} - avoid trend following");
+				return Hold($"Not strong trending - {regime.Description}");
+			}
+
+			// STRICTER: Require high regime confidence
+			if (regime.RegimeConfidence < 0.7m)
+			{
+				return Hold($"Low regime confidence: {regime.RegimeConfidence:P0}");
 			}
 
 			// Multi-timeframe analysis
 			var mtf = IndicatorsEnhanced.AnalyzeMultiTimeframe(closes, highs, lows);
 
-			// Require timeframe alignment
+			// STRICTER: Must be aligned
 			if (!mtf.IsAligned)
 			{
 				return Hold($"Timeframes not aligned: {mtf.Reason}");
+			}
+
+			// STRICTER: Require high MTF confidence
+			if (mtf.Confidence < 0.7m)
+			{
+				return Hold($"Low MTF confidence: {mtf.Confidence:P0}");
 			}
 
 			// Calculate moving averages
@@ -52,69 +63,114 @@ namespace TraderBotV1
 			int idx = closes.Count - 1;
 			decimal price = closes[idx];
 
-			// Check for pullback to moving average (better entry)
-			bool pullbackToEMA = false;
-			if (mtf.CurrentTFTrend == "Up")
-			{
-				// Look for pullback to EMA20 or EMA50 in uptrend
-				pullbackToEMA = (price >= ema20[idx] * 0.995m && price <= ema20[idx] * 1.01m) ||
-							   (price >= ema50[idx] * 0.99m && price <= ema50[idx] * 1.02m);
-			}
-			else if (mtf.CurrentTFTrend == "Down")
-			{
-				pullbackToEMA = (price <= ema20[idx] * 1.005m && price >= ema20[idx] * 0.99m) ||
-							   (price <= ema50[idx] * 1.01m && price >= ema50[idx] * 0.98m);
-			}
-
-			// RSI confirmation (not overbought/oversold)
+			// RSI confirmation
 			var rsi = Indicators.RSIList(closes, 14);
 			decimal rsiValue = rsi.Count > idx ? rsi[idx] : 50m;
 
+			// STRICTER: Check price momentum (must be accelerating)
+			bool strongMomentum = closes[idx] > closes[idx - 3] &&
+								 closes[idx - 3] > closes[idx - 6];
+
 			if (mtf.CurrentTFTrend == "Up")
 			{
-				// Buy signal
-				if (regime.IsTrendingUp && price > ema200[idx])
+				// STRICTER: Must be clearly above EMA200
+				if (price < ema200[idx] * 1.02m)
 				{
-					// Better entry on pullback
-					if (pullbackToEMA && rsiValue > 40m && rsiValue < 70m)
-					{
-						decimal strength = Clamp01(mtf.Confidence * 0.5m + regime.RegimeConfidence * 0.3m + 0.2m);
-						return new("Buy", strength,
-							$"MTF uptrend with pullback entry (RSI={rsiValue:F1}, regime={regime.Description})");
-					}
-
-					// Standard entry
-					if (rsiValue < 70m)
-					{
-						decimal strength = Clamp01(mtf.Confidence * 0.4m + regime.RegimeConfidence * 0.3m);
-						return new("Buy", strength,
-							$"MTF uptrend confirmed (RSI={rsiValue:F1})");
-					}
+					return Hold($"Price not clearly above EMA200 ({price:F2} vs {ema200[idx]:F2})");
 				}
+
+				// STRICTER: Must have pullback to moving average (no chasing)
+				bool atPullback = (price >= ema20[idx] * 0.98m && price <= ema20[idx] * 1.005m) ||
+								 (price >= ema50[idx] * 0.97m && price <= ema50[idx] * 1.01m);
+
+				if (!atPullback)
+				{
+					return Hold($"No pullback to EMA - avoid chasing (price {price:F2} vs EMA20 {ema20[idx]:F2})");
+				}
+
+				// STRICTER: RSI must be in sweet spot (not overbought, not oversold)
+				if (rsiValue < 45m || rsiValue > 65m)
+				{
+					return Hold($"RSI outside optimal range: {rsiValue:F1} (need 45-65)");
+				}
+
+				// NEW: Check recent price action (must not be extended)
+				var recentPrices = closes.Skip(Math.Max(0, idx - 10)).Take(10).ToList();
+				decimal highestRecent = recentPrices.Max();
+				decimal extensionFromHigh = (highestRecent - price) / highestRecent;
+
+				if (extensionFromHigh < 0.01m) // Within 1% of recent high
+				{
+					return Hold($"Too extended - at recent high (only {extensionFromHigh:P1} pullback)");
+				}
+
+				// NEW: Volume check (must have some interest)
+				// This would need volumes parameter - skip for now
+
+				// STRICTER: Require strong momentum
+				if (!strongMomentum)
+				{
+					return Hold("Weak momentum - need 3-bar acceleration");
+				}
+
+				// STRICTER: Lower confidence score
+				decimal strength = Clamp01(
+					mtf.Confidence * 0.3m +
+					regime.RegimeConfidence * 0.3m +
+					0.2m  // Base reduced from 0.4
+				);
+
+				return new("Buy", strength,
+					$"MTF uptrend pullback entry (RSI={rsiValue:F1}, confidence={strength:P0})");
 			}
 			else if (mtf.CurrentTFTrend == "Down")
 			{
-				// Sell signal
-				if (regime.IsTrendingDown && price < ema200[idx])
+				// STRICTER: Same logic for sells
+				if (price > ema200[idx] * 0.98m)
 				{
-					if (pullbackToEMA && rsiValue < 60m && rsiValue > 30m)
-					{
-						decimal strength = Clamp01(mtf.Confidence * 0.5m + regime.RegimeConfidence * 0.3m + 0.2m);
-						return new("Sell", strength,
-							$"MTF downtrend with pullback entry (RSI={rsiValue:F1}, regime={regime.Description})");
-					}
-
-					if (rsiValue > 30m)
-					{
-						decimal strength = Clamp01(mtf.Confidence * 0.4m + regime.RegimeConfidence * 0.3m);
-						return new("Sell", strength,
-							$"MTF downtrend confirmed (RSI={rsiValue:F1})");
-					}
+					return Hold($"Price not clearly below EMA200");
 				}
+
+				bool atPullback = (price <= ema20[idx] * 1.02m && price >= ema20[idx] * 0.995m) ||
+								 (price <= ema50[idx] * 1.03m && price >= ema50[idx] * 0.99m);
+
+				if (!atPullback)
+				{
+					return Hold($"No pullback to EMA - avoid chasing");
+				}
+
+				if (rsiValue > 55m || rsiValue < 35m)
+				{
+					return Hold($"RSI outside optimal range: {rsiValue:F1} (need 35-55)");
+				}
+
+				var recentPrices = closes.Skip(Math.Max(0, idx - 10)).Take(10).ToList();
+				decimal lowestRecent = recentPrices.Min();
+				decimal extensionFromLow = (price - lowestRecent) / lowestRecent;
+
+				if (extensionFromLow < 0.01m)
+				{
+					return Hold($"Too extended - at recent low");
+				}
+
+				if (!strongMomentum)
+				{
+					return Hold("Weak momentum");
+				}
+
+				decimal strength = Clamp01(
+					mtf.Confidence * 0.3m +
+					regime.RegimeConfidence * 0.3m +
+					0.2m
+				);
+
+				return new("Sell", strength,
+					$"MTF downtrend pullback entry (RSI={rsiValue:F1})");
 			}
 
-			return Hold($"No high-quality MTF setup (trend={mtf.CurrentTFTrend}, RSI={rsiValue:F1})");
+			return Hold($"No high-quality MTF setup");
 		}
+
 
 		// ═══════════════════════════════════════════════════════════════
 		// 2) MEAN REVERSION WITH SUPPORT/RESISTANCE

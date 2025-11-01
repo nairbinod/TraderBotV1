@@ -406,7 +406,7 @@ namespace TraderBotV1.Data
 			conn.Open();
 
 			var cmd = conn.CreateCommand();
-			cmd.CommandText = "DELETE FROM prices; DELETE FROM signals; DELETE FROM trades;";
+			cmd.CommandText = "DELETE FROM prices; DELETE FROM signals; INSERT into TradesHistory select * from trades;DELETE FROM trades;";
 			cmd.ExecuteNonQuery();
 
 			Console.WriteLine("⚠️ All data cleared from database");
