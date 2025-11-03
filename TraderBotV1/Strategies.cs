@@ -106,7 +106,7 @@ namespace TraderBotV1
 			bool strongDowntrend = context.IsDowntrend && context.TrendStrength > 0.015m;
 
 			// BUY near lower band (oversold)
-			if (price <= lb.Value && rsi < 35m)
+			if (price <= lb.Value && rsi < 38m)
 			{
 				if (strongDowntrend)
 					return Hold("Strong downtrend - avoid catching falling knife");
@@ -115,7 +115,7 @@ namespace TraderBotV1
 				var rsiValidation = SignalValidator.ValidateRSI(rsiList, closes, idx, "Buy");
 
 				decimal depth = (lb.Value - price) / Math.Max(ub.Value - lb.Value, 1e-8m);
-				decimal strength = Clamp01(depth * 0.5m + (rsiValidation.IsValid ? 0.3m : 0.1m));
+				decimal strength = Clamp01(depth * 0.5m + (rsiValidation.IsValid ? 0.35m : 0.15m));
 
 				string reason = rsiValidation.IsValid
 					? $"Bollinger buy validated (RSI={rsi:F1}, depth={depth:P1})"
@@ -125,7 +125,7 @@ namespace TraderBotV1
 			}
 
 			// SELL near upper band (overbought)
-			if (price >= ub.Value && rsi > 65m)
+			if (price >= ub.Value && rsi > 62m)
 			{
 				if (strongUptrend)
 					return Hold("Strong uptrend - avoid selling strength");
@@ -133,7 +133,7 @@ namespace TraderBotV1
 				var rsiValidation = SignalValidator.ValidateRSI(rsiList, closes, idx, "Sell");
 
 				decimal depth = (price - ub.Value) / Math.Max(ub.Value - lb.Value, 1e-8m);
-				decimal strength = Clamp01(depth * 0.5m + (rsiValidation.IsValid ? 0.3m : 0.1m));
+				decimal strength = Clamp01(depth * 0.5m + (rsiValidation.IsValid ? 0.35m : 0.15m));
 
 				string reason = rsiValidation.IsValid
 					? $"Bollinger sell validated (RSI={rsi:F1}, depth={depth:P1})"
@@ -170,7 +170,7 @@ namespace TraderBotV1
 
 			// STRICTER: Volatility must be significant but not extreme
 			decimal volRatio = currAtr / Math.Max(price, 1e-8m);
-			if (volRatio < 0.004m)  // ⚖️ BALANCED: 0.4% (was 0.8%)
+			if (volRatio < 0.003m)  // ⚖️ MORE LENIENT: 0.3%
 				return Hold($"Insufficient volatility: {volRatio:P2} (need >0.4%)");
 
 			if (context.VolatilityRatio > 3.5m)  // ⚖️ BALANCED: Allow higher volatility (was 2.5x)
@@ -185,7 +185,7 @@ namespace TraderBotV1
 
 			// STRICTER: Require CLEAR trend separation
 			decimal emaSeparation = Math.Abs(emaFastList[idx] - emaSlowList[idx]) / emaSlowList[idx];
-			if (emaSeparation < 0.003m)  // ⚖️ BALANCED: 0.3% (was 1%)
+			if (emaSeparation < 0.002m)  // ⚖️ MORE LENIENT: 0.2%
 			{
 				return Hold($"EMA separation too small: {emaSeparation:P2}");
 			}
@@ -201,7 +201,7 @@ namespace TraderBotV1
 			var avgPrice = closes.Skip(Math.Max(0, idx - 20)).Take(20).Average();
 			decimal consolidationTightness = recentRange / avgPrice;
 
-			if (consolidationTightness > 0.25m)  // ⚖️ BALANCED: 25% (was 15%)
+			if (consolidationTightness > 0.30m)  // ⚖️ MORE LENIENT: 30%
 			{
 				return Hold($"Not consolidating enough for breakout (range: {consolidationTightness:P1})");
 			}
@@ -211,7 +211,7 @@ namespace TraderBotV1
 			{
 				// STRICTER: Must be clear breakout (not marginal)
 				decimal breakoutMargin = (price - buyThresh) / currAtr;
-				if (breakoutMargin < 0.1m)  // ⚖️ BALANCED: 10% of ATR (was 30%)
+				if (breakoutMargin < 0.05m)  // ⚖️ MORE LENIENT: 5% of ATR
 				{
 					return Hold($"Breakout margin too small: {breakoutMargin:F2} ATRs");
 				}
@@ -221,7 +221,7 @@ namespace TraderBotV1
 					return Hold("No clear breakout (already above threshold)");
 
 				// STRICTER: RSI range (not overbought)
-				if (rsi > 75m)  // ⚖️ BALANCED: 75 (was 70)
+				if (rsi > 78m)  // ⚖️ MORE LENIENT: 78
 					return Hold($"RSI overbought: {rsi:F1}");
 
 				// STRICTER: Must have strong momentum over multiple bars
@@ -239,7 +239,7 @@ namespace TraderBotV1
 
 				// STRICTER: Lower confidence
 				decimal breakoutStrength = (price - buyThresh) / currAtr;
-				decimal strength = Clamp01(breakoutStrength * 0.3m + 0.55m);  // ⚖️ BALANCED: Higher confidence
+				decimal strength = Clamp01(breakoutStrength * 0.3m + 0.58m);  // ⚖️ MORE LENIENT: Even higher base
 
 				return new("Buy", strength,
 					$"ATR breakout (${price:F2}>${buyThresh:F2}, RSI={rsi:F1}, margin={breakoutMargin:F2})");
@@ -257,7 +257,7 @@ namespace TraderBotV1
 				if (closes[idx - 1] < sellThresh * 1.01m)  // ⚖️ BALANCED
 					return Hold("No clear breakdown");
 
-				if (rsi < 25m)  // ⚖️ BALANCED: 25 (was 30)
+				if (rsi < 22m)  // ⚖️ MORE LENIENT: 22
 					return Hold($"RSI oversold: {rsi:F1}");
 
 				int consecutiveDown = 0;

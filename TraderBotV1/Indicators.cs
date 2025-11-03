@@ -1124,7 +1124,7 @@ namespace TraderBotV1
 
 			if (isBuy)
 			{
-				bool wasOversold = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k < 0.25m);  // ⚖️ BALANCED: <0.25 (was <0.2)
+				bool wasOversold = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k < 0.30m);  // ⚖️ MORE LENIENT: <0.30
 				if (!wasOversold)
 					return validation.Fail("No oversold condition");
 
@@ -1140,7 +1140,7 @@ namespace TraderBotV1
 			}
 			else
 			{
-				bool wasOverbought = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k > 0.75m);  // ⚖️ BALANCED: >0.75 (was >0.8)
+				bool wasOverbought = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k > 0.70m);  // ⚖️ MORE LENIENT: >0.70
 				if (!wasOverbought)
 					return validation.Fail("No overbought condition");
 
@@ -1160,7 +1160,7 @@ namespace TraderBotV1
 
 		/// <summary>Volume spike validation</summary>
 		public static SignalValidation ValidateVolumeSpike(List<decimal> volumes, List<decimal> prices,
-			int idx, decimal spikeMultiple = 1.3m)  // ⚖️ BALANCED: 1.3x (was 1.5x)
+			int idx, decimal spikeMultiple = 1.2m)  // ⚖️ MORE LENIENT: 1.2x
 		{
 			var validation = new SignalValidation { IsValid = false };
 
@@ -1201,7 +1201,7 @@ namespace TraderBotV1
 
 			if (isBuy)
 			{
-				if (!(cciPrev <= -80m && cciNow > -80m))  // ⚖️ BALANCED: -80 (was -100)
+				if (!(cciPrev <= -70m && cciNow > -70m))  // ⚖️ MORE LENIENT: -70
 					return validation.Fail("No CCI oversold recovery (-80)");
 
 				bool momentum = cciNow > cciPrev && cci[idx - 1] > cci[idx - 2];
@@ -1212,7 +1212,7 @@ namespace TraderBotV1
 			}
 			else
 			{
-				if (!(cciPrev >= 80m && cciNow < 80m))  // ⚖️ BALANCED: 80 (was 100)
+				if (!(cciPrev >= 70m && cciNow < 70m))  // ⚖️ MORE LENIENT: 70
 					return validation.Fail("No CCI overbought reversal (80)");
 
 				bool momentum = cciNow < cciPrev && cci[idx - 1] < cci[idx - 2];
@@ -1240,7 +1240,7 @@ namespace TraderBotV1
 			bool isBuy = direction == "Buy";
 
 			decimal vol = atr.Count > idx && price > 0 ? atr[idx] / price : 0m;
-			if (vol < 0.003m)  // ⚖️ BALANCED: 0.3% (was 0.5%)
+			if (vol < 0.002m)  // ⚖️ MORE LENIENT: 0.2%
 				return validation.Fail($"Insufficient volatility: {vol:P2}");
 
 			if (isBuy)

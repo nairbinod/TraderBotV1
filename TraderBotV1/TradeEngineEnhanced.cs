@@ -16,11 +16,12 @@ namespace TraderBotV1
 		private readonly EmailNotificationService? _emailService;
 		private readonly List<TradingSignal> _sessionSignals;
 
-		// ⚖️ BALANCED THRESHOLDS (Reduced from strict version)
-		private const int MIN_VOTES_REQUIRED = 3;           // BALANCED: 2 strategies (was 3)
-		private const decimal MIN_CONFIDENCE = 0.55m;       // BALANCED: 55% (was 70%)
-		private const decimal MIN_QUALITY_SCORE = 0.50m;    // BALANCED: 50% (was 70%)
-		private const int MIN_STRATEGIES_FOR_ENTRY = 3;     // BALANCED: 2 strategies (was 3)
+		// ⚖️ BALANCED THRESHOLDS - Optimized for signal generation
+		private const int MIN_VOTES_REQUIRED = 3;              // Keep: Need 3 strategies to vote
+		private const decimal MIN_STRATEGY_CONFIDENCE = 0.45m; // NEW: 48% to count as a vote (lowered from 55%)
+		private const decimal MIN_FINAL_CONFIDENCE = 0.50m;    // INCREASED: 60% for final decision (was 55%)
+		private const decimal MIN_QUALITY_SCORE = 0.50m;       // INCREASED: 60% quality (was 50%)
+		private const int MIN_STRATEGIES_FOR_ENTRY = 3;        // Keep: Need 3 strategies minimum
 
 		public TradeEngineEnhanced(SqliteStorage db, decimal riskPercent = 0.01m,
 			EmailNotificationService? emailService = null)
@@ -36,9 +37,9 @@ namespace TraderBotV1
 			List<decimal> closes,
 			List<decimal> highs,
 			List<decimal> lows,
-			List<decimal>? volumes = null,
-			List<DateTime>? timestamps = null,
-			List<decimal>? opens = null)
+			List<decimal>? volumes,
+			List<decimal>? opens,
+			DateTime lastBarDate)
 		{
 			if (closes.Count < 100)
 			{
@@ -143,11 +144,11 @@ namespace TraderBotV1
 			{
 				var signal = allSignals[i];
 				// BALANCED: Accept signals at MIN_CONFIDENCE threshold
-				if (signal.Signal == "Buy" && signal.Strength >= MIN_CONFIDENCE)
+				if (signal.Signal == "Buy" && signal.Strength >= MIN_STRATEGY_CONFIDENCE)
 				{
 					buySignals.Add((signal, i));
 				}
-				else if (signal.Signal == "Sell" && signal.Strength >= MIN_CONFIDENCE)
+				else if (signal.Signal == "Sell" && signal.Strength >= MIN_STRATEGY_CONFIDENCE)
 				{
 					sellSignals.Add((signal, i));
 				}
@@ -217,7 +218,7 @@ namespace TraderBotV1
 			// Enhanced Decision Logic - BALANCED VERSION
 			if (buyVotes >= MIN_VOTES_REQUIRED &&
 				buyVotes > sellVotes &&
-				avgBuyConfidence >= MIN_CONFIDENCE &&
+				avgBuyConfidence >= MIN_FINAL_CONFIDENCE &&
 				qualityScore >= MIN_QUALITY_SCORE)
 			{
 				// Check MTF alignment for bonus confidence
@@ -235,7 +236,7 @@ namespace TraderBotV1
 			}
 			else if (sellVotes >= MIN_VOTES_REQUIRED &&
 					 sellVotes > buyVotes &&
-					 avgSellConfidence >= MIN_CONFIDENCE &&
+					 avgSellConfidence >= MIN_FINAL_CONFIDENCE &&
 					 qualityScore >= MIN_QUALITY_SCORE)
 			{
 				// Check MTF alignment for bonus confidence
@@ -257,9 +258,9 @@ namespace TraderBotV1
 				{
 					finalReason = $"Quality score too low: {qualityScore:P0} < {MIN_QUALITY_SCORE:P0}";
 				}
-				else if (avgBuyConfidence < MIN_CONFIDENCE && avgSellConfidence < MIN_CONFIDENCE)
+				else if (avgBuyConfidence < MIN_FINAL_CONFIDENCE && avgSellConfidence < MIN_FINAL_CONFIDENCE)
 				{
-					finalReason = $"Confidence too low (buy:{avgBuyConfidence:P0}, sell:{avgSellConfidence:P0}, need:{MIN_CONFIDENCE:P0})";
+					finalReason = $"Confidence too low (buy:{avgBuyConfidence:P0}, sell:{avgSellConfidence:P0}, need:{MIN_FINAL_CONFIDENCE:P0})";
 				}
 				else
 				{
@@ -369,11 +370,7 @@ namespace TraderBotV1
 				_db.InsertSignal(symbol, DateTime.UtcNow, "Enhanced_Entry", finalSignal,
 					$"entry=${entry:F2}, qty={qty:F0}, stop=${stopDistance:F2}, quality={qualityScore:P0}");
 
-				DateTime? barDate = timestamps != null && timestamps.Count > 0
-					? timestamps[timestamps.Count - 1]
-					: null;
-
-				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, (long)qty, entry, barDate);
+				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, (long)qty, entry, lastBarDate);
 			}
 
 			// ═══════════════════════════════════════════════════════════════
@@ -394,10 +391,8 @@ namespace TraderBotV1
 				Console.WriteLine($"   Risk: ${adjustedRisk:F2} (adjusted by quality)");
 				Console.WriteLine($"   Position Value: ${entry * qty:N2}");
 
-				if (timestamps != null && timestamps.Count > 0)
-				{
-					Console.WriteLine($"   Bar Date: {timestamps[timestamps.Count - 1]:yyyy-MM-dd HH:mm:ss}");
-				}
+				Console.WriteLine($"   Bar Date: {lastBarDate:yyyy-MM-dd HH:mm:ss}");
+
 			}
 			else
 			{

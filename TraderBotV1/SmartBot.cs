@@ -145,10 +145,13 @@ namespace TraderBotV1
 				}
 
 				// Extract price data
+				var opens = bars.Select(b => b.Open).ToList();
 				var closes = bars.Select(b => b.Close).ToList();
 				var highs = bars.Select(b => b.High).ToList();
 				var lows = bars.Select(b => b.Low).ToList();
 				var volumes = bars.Select(b => (decimal)b.Volume).ToList();
+
+				var lastBarDate = bars.Max(b => b.TimestampUtc);
 
 				// Optional: Persist price data to database
 				if (_cfg.PersistPriceData)
@@ -158,7 +161,7 @@ namespace TraderBotV1
 
 				// Run trading analysis
 				Console.WriteLine($"   🔬 Analyzing {symbol} ({bars.Count} bars)...");
-				_engine.EvaluateAndLog(symbol, closes, highs, lows, volumes);
+				_engine.EvaluateAndLog(symbol, closes, highs, lows, volumes , opens, lastBarDate);
 
 				result.Status = "Success";
 				result.Message = $"Analyzed {bars.Count} bars";
