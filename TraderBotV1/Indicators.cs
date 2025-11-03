@@ -1119,12 +1119,12 @@ namespace TraderBotV1
 			decimal kPrev = stochK[idx - 1];
 			decimal dNow = stochD[idx];
 
-			if (kNow > 0.4m && kNow < 0.6m)
+			if (kNow > 0.35m && kNow < 0.65m)  // ⚖️ BALANCED: Wider neutral zone
 				return validation.Fail("StochRSI in neutral zone");
 
 			if (isBuy)
 			{
-				bool wasOversold = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k < 0.2m);
+				bool wasOversold = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k < 0.25m);  // ⚖️ BALANCED: <0.25 (was <0.2)
 				if (!wasOversold)
 					return validation.Fail("No oversold condition");
 
@@ -1140,7 +1140,7 @@ namespace TraderBotV1
 			}
 			else
 			{
-				bool wasOverbought = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k > 0.8m);
+				bool wasOverbought = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k > 0.75m);  // ⚖️ BALANCED: >0.75 (was >0.8)
 				if (!wasOverbought)
 					return validation.Fail("No overbought condition");
 
@@ -1160,7 +1160,7 @@ namespace TraderBotV1
 
 		/// <summary>Volume spike validation</summary>
 		public static SignalValidation ValidateVolumeSpike(List<decimal> volumes, List<decimal> prices,
-			int idx, decimal spikeMultiple = 1.5m)
+			int idx, decimal spikeMultiple = 1.3m)  // ⚖️ BALANCED: 1.3x (was 1.5x)
 		{
 			var validation = new SignalValidation { IsValid = false };
 
@@ -1201,8 +1201,8 @@ namespace TraderBotV1
 
 			if (isBuy)
 			{
-				if (!(cciPrev <= -100m && cciNow > -100m))
-					return validation.Fail("No CCI oversold recovery");
+				if (!(cciPrev <= -80m && cciNow > -80m))  // ⚖️ BALANCED: -80 (was -100)
+					return validation.Fail("No CCI oversold recovery (-80)");
 
 				bool momentum = cciNow > cciPrev && cci[idx - 1] > cci[idx - 2];
 
@@ -1212,8 +1212,8 @@ namespace TraderBotV1
 			}
 			else
 			{
-				if (!(cciPrev >= 100m && cciNow < 100m))
-					return validation.Fail("No CCI overbought reversal");
+				if (!(cciPrev >= 80m && cciNow < 80m))  // ⚖️ BALANCED: 80 (was 100)
+					return validation.Fail("No CCI overbought reversal (80)");
 
 				bool momentum = cciNow < cciPrev && cci[idx - 1] < cci[idx - 2];
 
@@ -1240,7 +1240,7 @@ namespace TraderBotV1
 			bool isBuy = direction == "Buy";
 
 			decimal vol = atr.Count > idx && price > 0 ? atr[idx] / price : 0m;
-			if (vol < 0.005m)
+			if (vol < 0.003m)  // ⚖️ BALANCED: 0.3% (was 0.5%)
 				return validation.Fail($"Insufficient volatility: {vol:P2}");
 
 			if (isBuy)

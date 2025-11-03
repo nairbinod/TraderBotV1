@@ -153,7 +153,7 @@ namespace TraderBotV1
 							int emaFast = 9,
 							int emaSlow = 21,
 							int rsiPeriod = 14,
-							decimal k = 1.5m)  // INCREASED from 1.2
+							decimal k = 1.4m)  // ⚖️ BALANCED: 1.4x (was 1.5x strict)
 		{
 			if (closes.Count < emaSlow + 5 || atr.Count < emaSlow + 5)
 				return Hold("insufficient data");
@@ -170,10 +170,10 @@ namespace TraderBotV1
 
 			// STRICTER: Volatility must be significant but not extreme
 			decimal volRatio = currAtr / Math.Max(price, 1e-8m);
-			if (volRatio < 0.008m)  // INCREASED from 0.004
-				return Hold($"Insufficient volatility: {volRatio:P2} (need >0.8%)");
+			if (volRatio < 0.004m)  // ⚖️ BALANCED: 0.4% (was 0.8%)
+				return Hold($"Insufficient volatility: {volRatio:P2} (need >0.4%)");
 
-			if (context.VolatilityRatio > 2.5m)  // STRICTER from 3m
+			if (context.VolatilityRatio > 3.5m)  // ⚖️ BALANCED: Allow higher volatility (was 2.5x)
 				return Hold($"Volatility too extreme: {context.VolatilityRatio:F2}x");
 
 			var emaFastList = Indicators.EMAList(closes, emaFast);
@@ -185,7 +185,7 @@ namespace TraderBotV1
 
 			// STRICTER: Require CLEAR trend separation
 			decimal emaSeparation = Math.Abs(emaFastList[idx] - emaSlowList[idx]) / emaSlowList[idx];
-			if (emaSeparation < 0.01m)  // Need 1%+ separation
+			if (emaSeparation < 0.003m)  // ⚖️ BALANCED: 0.3% (was 1%)
 			{
 				return Hold($"EMA separation too small: {emaSeparation:P2}");
 			}
@@ -201,7 +201,7 @@ namespace TraderBotV1
 			var avgPrice = closes.Skip(Math.Max(0, idx - 20)).Take(20).Average();
 			decimal consolidationTightness = recentRange / avgPrice;
 
-			if (consolidationTightness > 0.15m)
+			if (consolidationTightness > 0.25m)  // ⚖️ BALANCED: 25% (was 15%)
 			{
 				return Hold($"Not consolidating enough for breakout (range: {consolidationTightness:P1})");
 			}
@@ -211,17 +211,17 @@ namespace TraderBotV1
 			{
 				// STRICTER: Must be clear breakout (not marginal)
 				decimal breakoutMargin = (price - buyThresh) / currAtr;
-				if (breakoutMargin < 0.3m)  // Must break by at least 30% of ATR
+				if (breakoutMargin < 0.1m)  // ⚖️ BALANCED: 10% of ATR (was 30%)
 				{
 					return Hold($"Breakout margin too small: {breakoutMargin:F2} ATRs");
 				}
 
 				// STRICTER: Previous bar must be near or below threshold
-				if (closes[idx - 1] > buyThresh * 0.995m)
+				if (closes[idx - 1] > buyThresh * 0.99m)  // ⚖️ BALANCED: Less strict
 					return Hold("No clear breakout (already above threshold)");
 
 				// STRICTER: RSI range (not overbought)
-				if (rsi > 70m)  // STRICTER from 75
+				if (rsi > 75m)  // ⚖️ BALANCED: 75 (was 70)
 					return Hold($"RSI overbought: {rsi:F1}");
 
 				// STRICTER: Must have strong momentum over multiple bars
@@ -239,7 +239,7 @@ namespace TraderBotV1
 
 				// STRICTER: Lower confidence
 				decimal breakoutStrength = (price - buyThresh) / currAtr;
-				decimal strength = Clamp01(breakoutStrength * 0.2m + 0.4m);  // REDUCED
+				decimal strength = Clamp01(breakoutStrength * 0.3m + 0.55m);  // ⚖️ BALANCED: Higher confidence
 
 				return new("Buy", strength,
 					$"ATR breakout (${price:F2}>${buyThresh:F2}, RSI={rsi:F1}, margin={breakoutMargin:F2})");
@@ -249,15 +249,15 @@ namespace TraderBotV1
 			if (price < sellThresh && trendDown)
 			{
 				decimal breakdownMargin = (sellThresh - price) / currAtr;
-				if (breakdownMargin < 0.3m)
+				if (breakdownMargin < 0.1m)  // ⚖️ BALANCED
 				{
 					return Hold($"Breakdown margin too small: {breakdownMargin:F2} ATRs");
 				}
 
-				if (closes[idx - 1] < sellThresh * 1.005m)
+				if (closes[idx - 1] < sellThresh * 1.01m)  // ⚖️ BALANCED
 					return Hold("No clear breakdown");
 
-				if (rsi < 30m)  // STRICTER from 25
+				if (rsi < 25m)  // ⚖️ BALANCED: 25 (was 30)
 					return Hold($"RSI oversold: {rsi:F1}");
 
 				int consecutiveDown = 0;
@@ -343,7 +343,7 @@ namespace TraderBotV1
 							List<decimal> lows,
 							List<decimal> closes,
 							int period = 14,
-							decimal threshold = 30m)  // INCREASED from 25
+							decimal threshold = 25m)  // ⚖️ BALANCED: 25 (was 30)
 		{
 			var (adx, diPlus, diMinus) = Indicators.ADXList(highs, lows, closes, period);
 			if (adx.Count < 5) return Hold("ADX insufficient data");
@@ -355,7 +355,7 @@ namespace TraderBotV1
 			var context = SignalValidator.AnalyzeMarketContext(closes, highs, lows, idx);
 
 			// STRICTER: Skip if volatility too low
-			if (context.RecentRange < 0.01m)  // INCREASED from 0.008
+			if (context.RecentRange < 0.006m)  // ⚖️ BALANCED: 0.6% (was 1%)
 				return Hold($"Low volatility: range={context.RecentRange:P2}");
 
 			// STRICTER: ADX must be STRONG
@@ -372,9 +372,9 @@ namespace TraderBotV1
 
 			// STRICTER: DI+ and DI- separation must be CLEAR
 			decimal diSeparation = Math.Abs(diPlus[idx] - diMinus[idx]);
-			if (diSeparation < 10m)  // INCREASED from 5
+			if (diSeparation < 5m)  // ⚖️ BALANCED: 5 (was 10)
 			{
-				return Hold($"DI separation too small: {diSeparation:F1} (need >10)");
+				return Hold($"DI separation too small: {diSeparation:F1} (need >5)");
 			}
 
 			// Check for uptrend - STRICTER
@@ -389,7 +389,7 @@ namespace TraderBotV1
 					return Hold("DI+ not rising");
 
 				// STRICTER: Lower confidence
-				decimal strength = Clamp01((adxNow - threshold) / 25m + 0.5m);  // REDUCED
+				decimal strength = Clamp01((adxNow - threshold) / 20m + 0.55m);  // ⚖️ BALANCED: Higher base
 
 				return new("Buy", strength,
 					$"Strong uptrend (ADX={adxNow:F1}, DI+={diPlus[idx]:F1})");
@@ -404,7 +404,7 @@ namespace TraderBotV1
 				if (idx > 0 && diMinus[idx] <= diMinus[idx - 1])
 					return Hold("DI- not rising");
 
-				decimal strength = Clamp01((adxNow - threshold) / 25m + 0.5m);
+				decimal strength = Clamp01((adxNow - threshold) / 20m + 0.55m);  // ⚖️ BALANCED
 
 				return new("Sell", strength,
 					$"Strong downtrend (ADX={adxNow:F1}, DI-={diMinus[idx]:F1})");
@@ -417,7 +417,7 @@ namespace TraderBotV1
 				List<decimal> closes,
 				List<decimal> volumes,
 				int period = 20,
-				decimal spikeMultiple = 2.0m)  // INCREASED from 1.5x to 2.0x
+				decimal spikeMultiple = 1.3m)  // ⚖️ BALANCED: 1.3x (was 2.0x)
 		{
 			if (volumes == null || volumes.Count < closes.Count || volumes.Count < period + 5)
 				return Hold("Volume data insufficient");
@@ -439,8 +439,8 @@ namespace TraderBotV1
 
 			// NEW: Price movement must be significant (not just a small tick)
 			decimal priceChange = Math.Abs(closes[idx] - closes[idx - 1]) / closes[idx - 1];
-			if (priceChange < 0.015m)  // Must be at least 1.5% move
-				return Hold($"Price move too small: {priceChange:P2} (need >1.5%)");
+			if (priceChange < 0.005m)  // ⚖️ BALANCED: 0.5% move (was 1.5%)
+				return Hold($"Price move too small: {priceChange:P2} (need >0.5%)");
 
 			bool upBar = closes[idx] > closes[idx - 1];
 
@@ -493,28 +493,28 @@ namespace TraderBotV1
 
 			if (upBar)
 			{
-				if (rsiValue > 75m)  // STRICTER: Don't buy if already overbought
+				if (rsiValue > 80m)  // ⚖️ BALANCED: 80 (was 75)
 					return Hold($"RSI too high: {rsiValue:F1} - avoid buying into overbought");
 
-				if (rsiValue < 40m)  // Must have some strength
+				if (rsiValue < 30m)  // ⚖️ BALANCED: 30 (was 40)
 					return Hold($"RSI too low: {rsiValue:F1} - need confirmation of strength");
 			}
 			else
 			{
-				if (rsiValue < 25m)  // STRICTER: Don't sell if already oversold
+				if (rsiValue < 20m)  // ⚖️ BALANCED: 20 (was 25)
 					return Hold($"RSI too low: {rsiValue:F1} - avoid selling into oversold");
 
-				if (rsiValue > 60m)  // Must have some weakness
+				if (rsiValue > 70m)  // ⚖️ BALANCED: 70 (was 60)
 					return Hold($"RSI too high: {rsiValue:F1} - need confirmation of weakness");
 			}
 
 			// NEW: Check EMA separation (strong trend confirmation)
 			decimal emaSeparation = Math.Abs(ema20[idx] - ema50[idx]) / ema50[idx];
-			if (emaSeparation < 0.02m)  // Need at least 2% separation
-				return Hold($"Trend not strong enough: EMA separation {emaSeparation:P2} (need >2%)");
+			if (emaSeparation < 0.01m)  // ⚖️ BALANCED: 1% (was 2%)
+				return Hold($"Trend not strong enough: EMA separation {emaSeparation:P2} (need >1%)");
 
 			// NEW: Lower confidence due to volume signals being less reliable
-			decimal baseConfidence = 0.5m;  // Start lower
+			decimal baseConfidence = 0.6m;  // ⚖️ BALANCED: Start at 60% (was 50%)
 
 			// Add confidence for exceptional volume
 			if (volRatio > 3.0m)

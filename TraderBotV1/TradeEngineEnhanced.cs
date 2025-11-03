@@ -6,7 +6,8 @@ using TraderBotV1.Data;
 namespace TraderBotV1
 {
 	/// <summary>
-	/// Enhanced Trade Engine with improved signal quality and false signal reduction
+	/// BALANCED Trade Engine - Optimized for reasonable signal generation
+	/// Changes: Lower thresholds, MTF as bonus not requirement, relaxed quality filters
 	/// </summary>
 	public class TradeEngineEnhanced
 	{
@@ -15,11 +16,11 @@ namespace TraderBotV1
 		private readonly EmailNotificationService? _emailService;
 		private readonly List<TradingSignal> _sessionSignals;
 
-		// ENHANCED THRESHOLDS
-		private const int MIN_VOTES_REQUIRED = 3;           // Decreased from 4
-		private const decimal MIN_CONFIDENCE = 0.7m;       // Decreased from 0.75
-		private const decimal MIN_QUALITY_SCORE = 0.7m;    // NEW: Minimum quality score
-		private const int MIN_STRATEGIES_FOR_ENTRY = 3;     // NEW: Min strategies agreeing
+		// ⚖️ BALANCED THRESHOLDS (Reduced from strict version)
+		private const int MIN_VOTES_REQUIRED = 3;           // BALANCED: 2 strategies (was 3)
+		private const decimal MIN_CONFIDENCE = 0.55m;       // BALANCED: 55% (was 70%)
+		private const decimal MIN_QUALITY_SCORE = 0.50m;    // BALANCED: 50% (was 70%)
+		private const int MIN_STRATEGIES_FOR_ENTRY = 3;     // BALANCED: 2 strategies (was 3)
 
 		public TradeEngineEnhanced(SqliteStorage db, decimal riskPercent = 0.01m,
 			EmailNotificationService? emailService = null)
@@ -54,7 +55,7 @@ namespace TraderBotV1
 			int idx = closes.Count - 1;
 
 			// ═══════════════════════════════════════════════════════════════
-			// STEP 1: MARKET REGIME ANALYSIS (CRITICAL FILTER)
+			// STEP 1: MARKET REGIME ANALYSIS (INFORMATIONAL, NOT BLOCKING)
 			// ═══════════════════════════════════════════════════════════════
 
 			var regime = Indicators.DetectMarketRegime(closes, highs, lows);
@@ -64,24 +65,18 @@ namespace TraderBotV1
 			Console.WriteLine($"   Trend Strength: {regime.TrendStrength:P2}");
 			Console.WriteLine($"   Volatility: {regime.VolatilityLevel:P2}");
 
-			// Skip in unfavorable conditions
-			if (regime.Regime == Indicators.MarketRegime.Volatile)
+			// BALANCED: Only skip truly extreme volatility (not just "Volatile")
+			if (regime.Regime == Indicators.MarketRegime.Volatile && regime.VolatilityLevel > 0.08m)
 			{
-				Console.WriteLine($"⚠️ Extreme volatility - skipping {symbol}");
+				Console.WriteLine($"⚠️ EXTREME volatility ({regime.VolatilityLevel:P2}) - skipping {symbol}");
 				_db.InsertSignal(symbol, DateTime.UtcNow, "Regime", "Hold", "Extreme volatility");
 				return;
 			}
 
-			//Commenting 10/30/2025 - Skipping quiet markets may miss opportunities 
-			//if (regime.Regime == Indicators.MarketRegime.Quiet)
-			//{
-			//	Console.WriteLine($"⚠️ Very quiet market - skipping {symbol}");
-			//	_db.InsertSignal(symbol, DateTime.UtcNow, "Regime", "Hold", "Quiet market");
-			//	return;
-			//}
+			// BALANCED: Don't skip quiet markets - they can be great for mean reversion
 
 			// ═══════════════════════════════════════════════════════════════
-			// STEP 2: MULTI-TIMEFRAME CONFIRMATION
+			// STEP 2: MULTI-TIMEFRAME CONFIRMATION (BONUS, NOT REQUIRED)
 			// ═══════════════════════════════════════════════════════════════
 
 			var mtf = Indicators.AnalyzeMultiTimeframe(closes, highs, lows);
@@ -100,10 +95,10 @@ namespace TraderBotV1
 			var atr = Indicators.ATRList(highs, lows, closes, 14);
 
 			// ═══════════════════════════════════════════════════════════════
-			// STEP 4: EXECUTE ENHANCED STRATEGIES
+			// STEP 4: EXECUTE BALANCED STRATEGIES
 			// ═══════════════════════════════════════════════════════════════
 
-			// NEW Enhanced Strategies (Higher Priority)
+			// Enhanced Strategies (Higher Priority)
 			var s1 = Strategies.TrendFollowingMTF(closes, highs, lows);
 			var s2 = volumes != null ?
 				Strategies.MeanReversionSR(closes, highs, lows, volumes) :
@@ -124,7 +119,7 @@ namespace TraderBotV1
 			// Extended Strategies
 			var s9 = Strategies.AdxFilter(highs, lows, closes, 14, 25m);
 			var s10 = volumes != null ?
-				Strategies.VolumeConfirm(closes, volumes, 20, 2.0m): // STRICTER: 2.0x spike required :
+				Strategies.VolumeConfirm(closes, volumes, 20, 1.3m) :  // BALANCED: 1.3x spike (easier to trigger)
 				Hold("No volume");
 			var s11 = Strategies.DonchianBreakout(highs, lows, closes, 20);
 
@@ -147,6 +142,7 @@ namespace TraderBotV1
 			for (int i = 0; i < allSignals.Length; i++)
 			{
 				var signal = allSignals[i];
+				// BALANCED: Accept signals at MIN_CONFIDENCE threshold
 				if (signal.Signal == "Buy" && signal.Strength >= MIN_CONFIDENCE)
 				{
 					buySignals.Add((signal, i));
@@ -188,7 +184,7 @@ namespace TraderBotV1
 			Console.WriteLine($"   Required votes: {MIN_VOTES_REQUIRED}");
 
 			// ═══════════════════════════════════════════════════════════════
-			// STEP 6: QUALITY SCORE CALCULATION
+			// STEP 6: QUALITY SCORE CALCULATION (MORE LENIENT)
 			// ═══════════════════════════════════════════════════════════════
 
 			string preliminaryDirection = "Hold";
@@ -207,53 +203,63 @@ namespace TraderBotV1
 			}
 
 			// ═══════════════════════════════════════════════════════════════
-			// STEP 7: FINAL DECISION WITH ENHANCED FILTERS
+			// STEP 7: FINAL DECISION WITH BALANCED FILTERS
 			// ═══════════════════════════════════════════════════════════════
 
 			string finalSignal = "Hold";
 			decimal finalConfidence = 0m;
 			string finalReason = "No consensus";
 
-			// Enhanced Decision Logic
+			// BALANCED: MTF alignment is a BONUS, not a requirement
+			decimal mtfBonus = 0m;
+			bool mtfAligned = false;
+
+			// Enhanced Decision Logic - BALANCED VERSION
 			if (buyVotes >= MIN_VOTES_REQUIRED &&
 				buyVotes > sellVotes &&
 				avgBuyConfidence >= MIN_CONFIDENCE &&
 				qualityScore >= MIN_QUALITY_SCORE)
 			{
-				// Additional MTF filter for buy
+				// Check MTF alignment for bonus confidence
 				if (mtf.IsAligned && mtf.CurrentTFTrend == "Up")
 				{
-					finalSignal = "Buy";
-					finalConfidence = (avgBuyConfidence * 0.5m + qualityScore * 0.5m);
-					finalReason = $"{buyVotes} strategies, quality={qualityScore:P0}, MTF aligned";
+					mtfBonus = 0.1m;  // 10% confidence bonus
+					mtfAligned = true;
 				}
-				else
-				{
-					finalReason = $"{buyVotes} buy votes but MTF not aligned ({mtf.Reason})";
-				}
+
+				finalSignal = "Buy";
+				finalConfidence = Math.Min(avgBuyConfidence + mtfBonus, 1m);
+				finalReason = mtfAligned
+					? $"{buyVotes} strategies, quality={qualityScore:P0}, MTF aligned (+10% bonus)"
+					: $"{buyVotes} strategies, quality={qualityScore:P0}";
 			}
 			else if (sellVotes >= MIN_VOTES_REQUIRED &&
-					sellVotes > buyVotes &&
-					avgSellConfidence >= MIN_CONFIDENCE &&
-					qualityScore >= MIN_QUALITY_SCORE)
+					 sellVotes > buyVotes &&
+					 avgSellConfidence >= MIN_CONFIDENCE &&
+					 qualityScore >= MIN_QUALITY_SCORE)
 			{
-				// Additional MTF filter for sell
+				// Check MTF alignment for bonus confidence
 				if (mtf.IsAligned && mtf.CurrentTFTrend == "Down")
 				{
-					finalSignal = "Sell";
-					finalConfidence = (avgSellConfidence * 0.5m + qualityScore * 0.5m);
-					finalReason = $"{sellVotes} strategies, quality={qualityScore:P0}, MTF aligned";
+					mtfBonus = 0.1m;
+					mtfAligned = true;
 				}
-				else
-				{
-					finalReason = $"{sellVotes} sell votes but MTF not aligned ({mtf.Reason})";
-				}
+
+				finalSignal = "Sell";
+				finalConfidence = Math.Min(avgSellConfidence + mtfBonus, 1m);
+				finalReason = mtfAligned
+					? $"{sellVotes} strategies, quality={qualityScore:P0}, MTF aligned (+10% bonus)"
+					: $"{sellVotes} strategies, quality={qualityScore:P0}";
 			}
 			else if (buyVotes > 0 || sellVotes > 0)
 			{
 				if (qualityScore < MIN_QUALITY_SCORE && preliminaryDirection != "Hold")
 				{
 					finalReason = $"Quality score too low: {qualityScore:P0} < {MIN_QUALITY_SCORE:P0}";
+				}
+				else if (avgBuyConfidence < MIN_CONFIDENCE && avgSellConfidence < MIN_CONFIDENCE)
+				{
+					finalReason = $"Confidence too low (buy:{avgBuyConfidence:P0}, sell:{avgSellConfidence:P0}, need:{MIN_CONFIDENCE:P0})";
 				}
 				else
 				{
@@ -321,8 +327,8 @@ namespace TraderBotV1
 			decimal equity = 100000m;
 			decimal riskValue = equity * _riskPercent;
 
-			// Adjust risk based on quality score
-			decimal adjustedRisk = riskValue * Math.Max(qualityScore, 0.5m);
+			// BALANCED: Less aggressive quality adjustment
+			decimal adjustedRisk = riskValue * Math.Max(qualityScore * 1.2m, 0.6m);  // 60-120% of base risk
 			decimal qty = Math.Max(1, Math.Floor(adjustedRisk / stopDistance));
 
 			// ═══════════════════════════════════════════════════════════════
@@ -435,7 +441,7 @@ namespace TraderBotV1
 
 		private void LogEnhancedSignals(string symbol, Dictionary<string, StrategySignal> signals)
 		{
-			Console.WriteLine($"\n📋 Strategy Signals (Enhanced Engine):");
+			Console.WriteLine($"\n📋 Strategy Signals (Balanced Engine):");
 
 			var groupedSignals = new[]
 			{
@@ -453,8 +459,8 @@ namespace TraderBotV1
 				foreach (var (name, s) in sigs)
 				{
 					string icon = s.Signal == "Buy" ? "🟢" : s.Signal == "Sell" ? "🔴" : "⚪";
-					string strength = s.Strength >= 0.8m ? "STRONG" :
-									 s.Strength >= 0.7m ? "Good" : "Weak";
+					string strength = s.Strength >= 0.75m ? "STRONG" :
+									 s.Strength >= 0.55m ? "Good" : "Weak";
 					Console.WriteLine($"   {icon} {name,-14}: {s.Signal,-4} {strength,-6} ({s.Strength:P0}) - {s.Reason}");
 
 					_db.InsertSignal(symbol, DateTime.UtcNow, name, s.Signal,
