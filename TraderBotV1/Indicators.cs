@@ -1119,12 +1119,12 @@ namespace TraderBotV1
 			decimal kPrev = stochK[idx - 1];
 			decimal dNow = stochD[idx];
 
-			if (kNow > 0.35m && kNow < 0.65m)  // ⚖️ BALANCED: Wider neutral zone
+			if (kNow > 0.42m && kNow < 0.58m)  // ⚖️ BALANCED: Wider neutral zone
 				return validation.Fail("StochRSI in neutral zone");
 
 			if (isBuy)
 			{
-				bool wasOversold = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k < 0.30m);  // ⚖️ MORE LENIENT: <0.30
+				bool wasOversold = stochK.Skip(Math.Max(0, idx - 10)).Take(10).Any(k => k < 0.35m);  // ⚖️ MORE LENIENT: <0.30
 				if (!wasOversold)
 					return validation.Fail("No oversold condition");
 
@@ -1140,7 +1140,7 @@ namespace TraderBotV1
 			}
 			else
 			{
-				bool wasOverbought = stochK.Skip(Math.Max(0, idx - 5)).Take(5).Any(k => k > 0.70m);  // ⚖️ MORE LENIENT: >0.70
+				bool wasOverbought = stochK.Skip(Math.Max(0, idx - 10)).Take(10).Any(k => k > 0.65m);  // ⚖️ MORE LENIENT: >0.70
 				if (!wasOverbought)
 					return validation.Fail("No overbought condition");
 
@@ -1240,7 +1240,7 @@ namespace TraderBotV1
 			bool isBuy = direction == "Buy";
 
 			decimal vol = atr.Count > idx && price > 0 ? atr[idx] / price : 0m;
-			if (vol < 0.002m)  // ⚖️ MORE LENIENT: 0.2%
+			if (vol < 0.0015m)  // ⚖️ MORE LENIENT: 0.15% (lowered from 0.2%)
 				return validation.Fail($"Insufficient volatility: {vol:P2}");
 
 			if (isBuy)

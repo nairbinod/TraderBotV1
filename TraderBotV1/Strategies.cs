@@ -34,9 +34,58 @@ namespace TraderBotV1
 			int idx = closes.Count - 1;
 			var context = SignalValidator.AnalyzeMarketContext(closes, closes, closes, idx);
 
-			// Check for crossover
-			bool crossUp = emaFast[idx] > emaSlow[idx] && emaFast[idx - 1] <= emaSlow[idx - 1];
-			bool crossDown = emaFast[idx] < emaSlow[idx] && emaFast[idx - 1] >= emaSlow[idx - 1];
+			// ⭐ CHANGE: Check for crossover in last 3 bars (not just current bar)
+
+
+			bool crossUp = false;
+
+
+			bool crossDown = false;
+
+
+
+
+
+			for (int i = 0; i < 3 && idx - i > 0; i++)
+
+
+			{
+
+
+				int checkIdx = idx - i;
+
+
+				if (emaFast[checkIdx] > emaSlow[checkIdx] && emaFast[checkIdx - 1] <= emaSlow[checkIdx - 1])
+
+
+				{
+
+
+					crossUp = true;
+
+
+					break;
+
+
+				}
+
+
+				if (emaFast[checkIdx] < emaSlow[checkIdx] && emaFast[checkIdx - 1] >= emaSlow[checkIdx - 1])
+
+
+				{
+
+
+					crossDown = true;
+
+
+					break;
+
+
+				}
+
+
+			}
 
 			if (crossUp)
 			{
@@ -76,6 +125,71 @@ namespace TraderBotV1
 			return Hold($"No EMA crossover");
 		}
 
+		// ⭐ IMPROVEMENT 3: AdxFilter - Lower ADX threshold
+		// Replace the existing AdxFilter method with this:
+		// Location: Around line 400-550 in Strategies.cs
+
+		public static StrategySignal AdxFilter(
+					List<decimal> highs,
+					List<decimal> lows,
+					List<decimal> closes,
+					int period = 14,
+					decimal minAdx = 20m)  // ⭐ REDUCED: 20 instead of 25
+		{
+			if (closes.Count < period + 20) return Hold("insufficient data");
+
+			var (adx, diPlus, diMinus) = Indicators.ADXList(highs, lows, closes, period);  // ⭐ USES ADXList
+
+			if (adx.Count == 0) return Hold("ADX not ready");
+
+			int idx = closes.Count - 1;
+			decimal adxVal = adx[^1];
+			decimal diP = diPlus[^1];
+			decimal diM = diMinus[^1];
+
+			// ⭐ IMPROVED: More lenient ADX threshold
+			if (adxVal < minAdx)  // Now checks for ADX > 20 (was 25)
+				return Hold($"ADX too weak: {adxVal:F1} < {minAdx}");
+
+			// ⭐ IMPROVED: More lenient DI spread requirement
+			decimal diSpread = Math.Abs(diP - diM);
+			if (diSpread < 3m)  // ⭐ REDUCED: 3 instead of 5
+				return Hold($"DI spread too narrow: {diSpread:F1}");
+
+			// Determine direction
+			if (diP > diM && diP > 15m)  // ⭐ REDUCED: 15 instead of 20
+			{
+				// ⭐ IMPROVED: Better strength calculation
+				decimal strength = Clamp01(
+					0.35m +  // ⭐ Higher base
+					Math.Min((adxVal - minAdx) / 30m, 0.25m) +  // ADX strength bonus
+					Math.Min(diSpread / 40m, 0.20m)  // DI spread bonus
+				);
+
+				return new("Buy", strength, $"ADX trend ↑ (ADX={adxVal:F1}, DI+={diP:F1})");
+			}
+
+			if (diM > diP && diM > 15m)  // ⭐ REDUCED: 15 instead of 20
+			{
+				decimal strength = Clamp01(
+					0.35m +
+					Math.Min((adxVal - minAdx) / 30m, 0.25m) +
+					Math.Min(diSpread / 40m, 0.20m)
+				);
+
+				return new("Sell", strength, $"ADX trend ↓ (ADX={adxVal:F1}, DI-={diM:F1})");
+			}
+
+			return Hold($"DI+ not dominant enough: {diP:F1} vs {diM:F1}");
+		}
+
+
+		// ═══════════════════════════════════════════════════════════════
+		// COMPLETE FILE WITH ALL 4 IMPROVEMENTS
+		// Copy all 4 methods below to replace in your Strategies.cs
+		// ═══════════════════════════════════════════════════════════════
+
+		// ⭐ IMPROVEMENT 1: BollingerMeanReversion - More Aggressive Entry Conditions
 		public static StrategySignal BollingerMeanReversion(
 					List<decimal> closes,
 					List<decimal?> upper,
@@ -101,43 +215,68 @@ namespace TraderBotV1
 
 			var context = SignalValidator.AnalyzeMarketContext(closes, closes, closes, idx);
 
-			// Trend context - avoid mean reversion in strong trends
-			bool strongUptrend = context.IsUptrend && context.TrendStrength > 0.015m;
-			bool strongDowntrend = context.IsDowntrend && context.TrendStrength > 0.015m;
+			// Trend context - avoid mean reversion in VERY strong trends only
+			bool veryStrongUptrend = context.IsUptrend && context.TrendStrength > 0.03m;
+			bool veryStrongDowntrend = context.IsDowntrend && context.TrendStrength > 0.03m;
 
-			// BUY near lower band (oversold)
-			if (price <= lb.Value && rsi < 38m)
+			// ⭐ IMPROVED: More aggressive band position calculation
+			decimal bandWidth = Math.Max(ub.Value - lb.Value, 1e-8m);
+			decimal bandPosition = (price - lb.Value) / bandWidth;
+
+			// BUY CONDITIONS
+			bool inLowerHalf = bandPosition < 0.50m;
+			bool nearLowerBand = bandPosition < 0.30m;
+			bool atLowerBand = price <= lb.Value;
+
+			if ((inLowerHalf && rsi < 55m) ||
+				(nearLowerBand && rsi < 58m) ||
+				(atLowerBand && rsi < 65m) ||
+				(price < lb.Value * 1.01m))
 			{
-				if (strongDowntrend)
-					return Hold("Strong downtrend - avoid catching falling knife");
+				if (veryStrongDowntrend)
+					return Hold("Very strong downtrend - avoid catching falling knife");
 
-				// Validate RSI oversold
 				var rsiValidation = SignalValidator.ValidateRSI(rsiList, closes, idx, "Buy");
 
-				decimal depth = (lb.Value - price) / Math.Max(ub.Value - lb.Value, 1e-8m);
-				decimal strength = Clamp01(depth * 0.5m + (rsiValidation.IsValid ? 0.35m : 0.15m));
+				decimal depth = Math.Abs(lb.Value - price) / bandWidth;
+				decimal baseStrength = 0.40m;
+				decimal rsiBonus = rsiValidation.IsValid ? 0.25m : 0.10m;
+				decimal positionBonus = (1.0m - bandPosition) * 0.20m;
+
+				decimal strength = Clamp01(baseStrength + rsiBonus + positionBonus);
 
 				string reason = rsiValidation.IsValid
-					? $"Bollinger buy validated (RSI={rsi:F1}, depth={depth:P1})"
-					: $"Bollinger buy (weak confirmation, RSI={rsi:F1})";
+					? $"Bollinger buy validated (RSI={rsi:F1}, lower {bandPosition:P0})"
+					: $"Bollinger buy (RSI={rsi:F1}, near lower band)";
 
 				return new("Buy", strength, reason);
 			}
 
-			// SELL near upper band (overbought)
-			if (price >= ub.Value && rsi > 62m)
+			// SELL CONDITIONS
+			bool inUpperHalf = bandPosition > 0.50m;
+			bool nearUpperBand = bandPosition > 0.70m;
+			bool atUpperBand = price >= ub.Value;
+
+			if ((inUpperHalf && rsi > 45m) ||
+				(nearUpperBand && rsi > 42m) ||
+				(atUpperBand && rsi > 35m) ||
+				(price > ub.Value * 0.99m))
 			{
-				if (strongUptrend)
-					return Hold("Strong uptrend - avoid selling strength");
+				if (veryStrongUptrend)
+					return Hold("Very strong uptrend - avoid selling strength");
 
 				var rsiValidation = SignalValidator.ValidateRSI(rsiList, closes, idx, "Sell");
 
-				decimal depth = (price - ub.Value) / Math.Max(ub.Value - lb.Value, 1e-8m);
-				decimal strength = Clamp01(depth * 0.5m + (rsiValidation.IsValid ? 0.35m : 0.15m));
+				decimal depth = Math.Abs(price - ub.Value) / bandWidth;
+				decimal baseStrength = 0.40m;
+				decimal rsiBonus = rsiValidation.IsValid ? 0.25m : 0.10m;
+				decimal positionBonus = bandPosition * 0.20m;
+
+				decimal strength = Clamp01(baseStrength + rsiBonus + positionBonus);
 
 				string reason = rsiValidation.IsValid
-					? $"Bollinger sell validated (RSI={rsi:F1}, depth={depth:P1})"
-					: $"Bollinger sell (weak confirmation, RSI={rsi:F1})";
+					? $"Bollinger sell validated (RSI={rsi:F1}, upper {bandPosition:P0})"
+					: $"Bollinger sell (RSI={rsi:F1}, near upper band)";
 
 				return new("Sell", strength, reason);
 			}
@@ -145,15 +284,17 @@ namespace TraderBotV1
 			return Hold($"Price in middle band (RSI={rsi:F1})");
 		}
 
+
+		// ⭐ IMPROVEMENT 2: AtrBreakout - Lower k-factor and volatility requirements
 		public static StrategySignal AtrBreakout(
-							List<decimal> closes,
-							List<decimal> highs,
-							List<decimal> lows,
-							List<decimal> atr,
-							int emaFast = 9,
-							int emaSlow = 21,
-							int rsiPeriod = 14,
-							decimal k = 1.4m)  // ⚖️ BALANCED: 1.4x (was 1.5x strict)
+					List<decimal> closes,
+					List<decimal> highs,
+					List<decimal> lows,
+					List<decimal> atr,
+					int emaFast = 9,
+					int emaSlow = 21,
+					int rsiPeriod = 14,
+					decimal k = 0.4m)  // ⭐ REDUCED: 0.4x for earlier entries (was 0.6m)
 		{
 			if (closes.Count < emaSlow + 5 || atr.Count < emaSlow + 5)
 				return Hold("insufficient data");
@@ -168,119 +309,61 @@ namespace TraderBotV1
 
 			var context = SignalValidator.AnalyzeMarketContext(closes, highs, lows, idx);
 
-			// STRICTER: Volatility must be significant but not extreme
+			// ⭐ IMPROVED: More lenient volatility check
 			decimal volRatio = currAtr / Math.Max(price, 1e-8m);
-			if (volRatio < 0.003m)  // ⚖️ MORE LENIENT: 0.3%
-				return Hold($"Insufficient volatility: {volRatio:P2} (need >0.4%)");
+			if (volRatio < 0.001m)  // ⭐ REDUCED: 0.1% (was 0.2%)
+				return Hold($"Insufficient volatility: {volRatio:P2}");
 
-			if (context.VolatilityRatio > 3.5m)  // ⚖️ BALANCED: Allow higher volatility (was 2.5x)
-				return Hold($"Volatility too extreme: {context.VolatilityRatio:F2}x");
+			// ⭐ IMPROVED: More lenient ATR bands
+			decimal buyThreshold = prevHigh + (currAtr * k);
+			decimal sellThreshold = prevLow - (currAtr * k);
 
-			var emaFastList = Indicators.EMAList(closes, emaFast);
-			var emaSlowList = Indicators.EMAList(closes, emaSlow);
+			bool buyBreakout = price > buyThreshold;
+			bool sellBreakout = price < sellThreshold;
+
+			// Get RSI for additional confirmation
 			var rsiList = Indicators.RSIList(closes, rsiPeriod);
+			decimal rsi = rsiList.Count > 0 ? rsiList[^1] : 50m;
 
-			bool trendUp = emaFastList[idx] > emaSlowList[idx];
-			bool trendDown = emaFastList[idx] < emaSlowList[idx];
-
-			// STRICTER: Require CLEAR trend separation
-			decimal emaSeparation = Math.Abs(emaFastList[idx] - emaSlowList[idx]) / emaSlowList[idx];
-			if (emaSeparation < 0.002m)  // ⚖️ MORE LENIENT: 0.2%
+			if (buyBreakout)
 			{
-				return Hold($"EMA separation too small: {emaSeparation:P2}");
-			}
+				if (rsi < 25m)
+					return Hold($"RSI too oversold: {rsi:F1} (avoid exhaustion)");
 
-			decimal rsi = rsiList.Count > idx ? rsiList[idx] : 50m;
+				decimal breakoutStrength = (price - buyThreshold) / Math.Max(currAtr, 1e-8m);
 
-			decimal buyThresh = prevHigh + k * currAtr;
-			decimal sellThresh = prevLow - k * currAtr;
+				decimal baseStrength = 0.40m;
+				decimal breakoutBonus = Math.Min(breakoutStrength * 0.20m, 0.25m);
+				decimal rsiBonus = (rsi > 40m && rsi < 70m) ? 0.15m : 0.05m;
+				decimal trendBonus = context.IsUptrend ? 0.10m : 0m;
 
-			// NEW: Check if we've been consolidating (ADX check would be better)
-			var recentRange = highs.Skip(Math.Max(0, idx - 20)).Take(20).Max() -
-							 lows.Skip(Math.Max(0, idx - 20)).Take(20).Min();
-			var avgPrice = closes.Skip(Math.Max(0, idx - 20)).Take(20).Average();
-			decimal consolidationTightness = recentRange / avgPrice;
-
-			if (consolidationTightness > 0.30m)  // ⚖️ MORE LENIENT: 30%
-			{
-				return Hold($"Not consolidating enough for breakout (range: {consolidationTightness:P1})");
-			}
-
-			// BUY breakout - MUCH STRICTER
-			if (price > buyThresh && trendUp)
-			{
-				// STRICTER: Must be clear breakout (not marginal)
-				decimal breakoutMargin = (price - buyThresh) / currAtr;
-				if (breakoutMargin < 0.05m)  // ⚖️ MORE LENIENT: 5% of ATR
-				{
-					return Hold($"Breakout margin too small: {breakoutMargin:F2} ATRs");
-				}
-
-				// STRICTER: Previous bar must be near or below threshold
-				if (closes[idx - 1] > buyThresh * 0.99m)  // ⚖️ BALANCED: Less strict
-					return Hold("No clear breakout (already above threshold)");
-
-				// STRICTER: RSI range (not overbought)
-				if (rsi > 78m)  // ⚖️ MORE LENIENT: 78
-					return Hold($"RSI overbought: {rsi:F1}");
-
-				// STRICTER: Must have strong momentum over multiple bars
-				int consecutiveUp = 0;
-				for (int i = idx; i > idx - 4 && i > 0; i--)
-				{
-					if (closes[i] > closes[i - 1])
-						consecutiveUp++;
-				}
-
-				if (consecutiveUp < 2)
-				{
-					return Hold("Insufficient momentum (need 2+ consecutive up bars)");
-				}
-
-				// STRICTER: Lower confidence
-				decimal breakoutStrength = (price - buyThresh) / currAtr;
-				decimal strength = Clamp01(breakoutStrength * 0.3m + 0.58m);  // ⚖️ MORE LENIENT: Even higher base
+				decimal strength = Clamp01(baseStrength + breakoutBonus + rsiBonus + trendBonus);
 
 				return new("Buy", strength,
-					$"ATR breakout (${price:F2}>${buyThresh:F2}, RSI={rsi:F1}, margin={breakoutMargin:F2})");
+					$"ATR breakout ↑ (price ${price:F2}, buy>${buyThreshold:F2}, RSI={rsi:F1})");
 			}
 
-			// SELL breakdown - MUCH STRICTER
-			if (price < sellThresh && trendDown)
+			if (sellBreakout)
 			{
-				decimal breakdownMargin = (sellThresh - price) / currAtr;
-				if (breakdownMargin < 0.1m)  // ⚖️ BALANCED
-				{
-					return Hold($"Breakdown margin too small: {breakdownMargin:F2} ATRs");
-				}
+				if (rsi > 75m)
+					return Hold($"RSI too overbought: {rsi:F1} (avoid exhaustion)");
 
-				if (closes[idx - 1] < sellThresh * 1.01m)  // ⚖️ BALANCED
-					return Hold("No clear breakdown");
+				decimal breakoutStrength = (sellThreshold - price) / Math.Max(currAtr, 1e-8m);
 
-				if (rsi < 22m)  // ⚖️ MORE LENIENT: 22
-					return Hold($"RSI oversold: {rsi:F1}");
+				decimal baseStrength = 0.40m;
+				decimal breakoutBonus = Math.Min(breakoutStrength * 0.20m, 0.25m);
+				decimal rsiBonus = (rsi < 60m && rsi > 30m) ? 0.15m : 0.05m;
+				decimal trendBonus = context.IsDowntrend ? 0.10m : 0m;
 
-				int consecutiveDown = 0;
-				for (int i = idx; i > idx - 4 && i > 0; i--)
-				{
-					if (closes[i] < closes[i - 1])
-						consecutiveDown++;
-				}
-
-				if (consecutiveDown < 2)
-				{
-					return Hold("Insufficient momentum");
-				}
-
-				decimal breakdownStrength = (sellThresh - price) / currAtr;
-				decimal strength = Clamp01(breakdownStrength * 0.2m + 0.4m);
+				decimal strength = Clamp01(baseStrength + breakoutBonus + rsiBonus + trendBonus);
 
 				return new("Sell", strength,
-					$"ATR breakdown (${price:F2}<${sellThresh:F2}, RSI={rsi:F1})");
+					$"ATR breakout ↓ (price ${price:F2}, sell<${sellThreshold:F2}, RSI={rsi:F1})");
 			}
 
-			return Hold($"No ATR breakout (price ${price:F2}, buy>${buyThresh:F2}, sell<${sellThresh:F2})");
+			return Hold($"No ATR breakout (price ${price:F2}, buy>${buyThreshold:F2}, sell<${sellThreshold:F2})");
 		}
+
 
 		public static StrategySignal MacdDivergence(
 					List<decimal> closes,
@@ -298,9 +381,38 @@ namespace TraderBotV1
 			if (context.IsSideways || context.RecentRange < 0.008m)
 				return Hold($"Choppy market - MACD unreliable (range={context.RecentRange:P2})");
 
-			// Check for crossover
-			bool crossUp = hist[idx] > 0 && hist[idx - 1] <= 0;
-			bool crossDown = hist[idx] < 0 && hist[idx - 1] >= 0;
+			// ⚖️ V2: Check last 3 bars for crossover OR building momentum
+			bool crossUp = false;
+			bool crossDown = false;
+
+			// Check last 3 bars for crossover
+			for (int i = 0; i < 3 && idx - i > 0; i++)
+			{
+				int checkIdx = idx - i;
+				if (hist[checkIdx] > 0 && hist[checkIdx - 1] <= 0)
+					crossUp = true;
+				if (hist[checkIdx] < 0 && hist[checkIdx - 1] >= 0)
+					crossDown = true;
+			}
+
+			// OR accept 3 consecutive bars building momentum
+			if (!crossUp && idx >= 2)
+			{
+				// Bullish: 3 increasing bars in positive territory
+				bool buildingUp = hist[idx] > 0 &&
+								 hist[idx] > hist[idx - 1] &&
+								 hist[idx - 1] > hist[idx - 2];
+				if (buildingUp) crossUp = true;
+			}
+
+			if (!crossDown && idx >= 2)
+			{
+				// Bearish: 3 decreasing bars in negative territory
+				bool buildingDown = hist[idx] < 0 &&
+								   hist[idx] < hist[idx - 1] &&
+								   hist[idx - 1] < hist[idx - 2];
+				if (buildingDown) crossDown = true;
+			}
 
 			if (crossUp)
 			{
@@ -337,204 +449,57 @@ namespace TraderBotV1
 		}
 
 		// ═══ EXTENDED STRATEGIES ═══
-
-		public static StrategySignal AdxFilter(
-							List<decimal> highs,
-							List<decimal> lows,
-							List<decimal> closes,
-							int period = 14,
-							decimal threshold = 25m)  // ⚖️ BALANCED: 25 (was 30)
-		{
-			var (adx, diPlus, diMinus) = Indicators.ADXList(highs, lows, closes, period);
-			if (adx.Count < 5) return Hold("ADX insufficient data");
-
-			int idx = adx.Count - 1;
-			decimal adxNow = adx[idx];
-			decimal adxPrev = adx[idx - 1];
-
-			var context = SignalValidator.AnalyzeMarketContext(closes, highs, lows, idx);
-
-			// STRICTER: Skip if volatility too low
-			if (context.RecentRange < 0.006m)  // ⚖️ BALANCED: 0.6% (was 1%)
-				return Hold($"Low volatility: range={context.RecentRange:P2}");
-
-			// STRICTER: ADX must be STRONG
-			if (adxNow < threshold)
-			{
-				return Hold($"ADX too weak: {adxNow:F1} < {threshold}");
-			}
-
-			// NEW: ADX must be rising (strengthening trend)
-			if (adxNow <= adxPrev)
-			{
-				return Hold($"ADX not rising ({adxNow:F1} vs {adxPrev:F1})");
-			}
-
-			// STRICTER: DI+ and DI- separation must be CLEAR
-			decimal diSeparation = Math.Abs(diPlus[idx] - diMinus[idx]);
-			if (diSeparation < 5m)  // ⚖️ BALANCED: 5 (was 10)
-			{
-				return Hold($"DI separation too small: {diSeparation:F1} (need >5)");
-			}
-
-			// Check for uptrend - STRICTER
-			if (diPlus[idx] > diMinus[idx])
-			{
-				// STRICTER: DI+ must be clearly dominant
-				if (diPlus[idx] < diMinus[idx] + 10m)
-					return Hold($"DI+ not dominant enough: {diPlus[idx]:F1} vs {diMinus[idx]:F1}");
-
-				// NEW: DI+ must be rising
-				if (idx > 0 && diPlus[idx] <= diPlus[idx - 1])
-					return Hold("DI+ not rising");
-
-				// STRICTER: Lower confidence
-				decimal strength = Clamp01((adxNow - threshold) / 20m + 0.55m);  // ⚖️ BALANCED: Higher base
-
-				return new("Buy", strength,
-					$"Strong uptrend (ADX={adxNow:F1}, DI+={diPlus[idx]:F1})");
-			}
-
-			// Check for downtrend - STRICTER
-			if (diMinus[idx] > diPlus[idx])
-			{
-				if (diMinus[idx] < diPlus[idx] + 10m)
-					return Hold($"DI- not dominant enough: {diMinus[idx]:F1} vs {diPlus[idx]:F1}");
-
-				if (idx > 0 && diMinus[idx] <= diMinus[idx - 1])
-					return Hold("DI- not rising");
-
-				decimal strength = Clamp01((adxNow - threshold) / 20m + 0.55m);  // ⚖️ BALANCED
-
-				return new("Sell", strength,
-					$"Strong downtrend (ADX={adxNow:F1}, DI-={diMinus[idx]:F1})");
-			}
-
-			return Hold($"ADX unclear (DI+={diPlus[idx]:F1}, DI-={diMinus[idx]:F1})");
-		}
-
+		// ⭐ IMPROVEMENT 4: VolumeConfirm - Lower spike requirement
 		public static StrategySignal VolumeConfirm(
-				List<decimal> closes,
-				List<decimal> volumes,
-				int period = 20,
-				decimal spikeMultiple = 1.3m)  // ⚖️ BALANCED: 1.3x (was 2.0x)
+					List<decimal> closes,
+					List<decimal> volumes,
+					int period = 20,
+					decimal spikeMultiple = 1.1m)  // ⭐ REDUCED: 1.1x instead of 1.3x
 		{
-			if (volumes == null || volumes.Count < closes.Count || volumes.Count < period + 5)
-				return Hold("Volume data insufficient");
+			if (closes.Count < period + 5 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
 
 			int idx = closes.Count - 1;
-
-			// STRICTER: Volume must be SIGNIFICANTLY higher
 			decimal currentVol = volumes[idx];
+
+			// Calculate average volume
 			var recentVols = volumes.Skip(Math.Max(0, idx - period)).Take(period).ToList();
 			decimal avgVol = recentVols.Average();
 
 			if (avgVol <= 0)
-				return Hold("Invalid volume baseline");
+				return Hold("invalid volume baseline");
 
 			decimal volRatio = currentVol / avgVol;
 
+			// ⭐ IMPROVED: More lenient spike requirement
 			if (volRatio < spikeMultiple)
 				return Hold($"Volume spike not strong enough: {volRatio:F2}x (need >{spikeMultiple:F1}x)");
 
-			// NEW: Price movement must be significant (not just a small tick)
-			decimal priceChange = Math.Abs(closes[idx] - closes[idx - 1]) / closes[idx - 1];
-			if (priceChange < 0.005m)  // ⚖️ BALANCED: 0.5% move (was 1.5%)
-				return Hold($"Price move too small: {priceChange:P2} (need >0.5%)");
-
+			// Price direction
 			bool upBar = closes[idx] > closes[idx - 1];
+			bool downBar = closes[idx] < closes[idx - 1];
 
-			// NEW: Require TREND CONFIRMATION (not just random volume spike)
-			var ema20 = Indicators.EMAList(closes, 20);
-			var ema50 = Indicators.EMAList(closes, 50);
+			if (!upBar && !downBar)
+				return Hold("Volume spike on doji/flat bar");
 
-			if (ema20.Count <= idx || ema50.Count <= idx)
-				return Hold("Insufficient data for trend confirmation");
+			// ⭐ IMPROVED: Better strength calculation
+			decimal baseStrength = 0.38m;
+			decimal volBonus = Math.Min((volRatio - spikeMultiple) * 0.15m, 0.25m);
 
-			bool uptrend = ema20[idx] > ema50[idx];
-			bool downtrend = ema20[idx] < ema50[idx];
+			// Price move confirmation
+			decimal priceMove = Math.Abs(closes[idx] - closes[idx - 1]) / closes[idx - 1];
+			decimal priceBonus = Math.Min(priceMove * 20m, 0.15m);
 
-			// CRITICAL: Volume spike must align with established trend
-			if (upBar && !uptrend)
-				return Hold("Volume spike on up bar but no uptrend - avoid false signal");
-
-			if (!upBar && !downtrend)
-				return Hold("Volume spike on down bar but no downtrend - avoid false signal");
-
-			// NEW: Require MOMENTUM (multiple consecutive bars in same direction)
-			int consecutiveBars = 0;
-			if (upBar)
-			{
-				for (int i = idx; i > idx - 4 && i > 0; i--)
-				{
-					if (closes[i] > closes[i - 1])
-						consecutiveBars++;
-				}
-				if (consecutiveBars < 2)
-					return Hold("Insufficient upward momentum (need 2+ consecutive up bars)");
-			}
-			else
-			{
-				for (int i = idx; i > idx - 4 && i > 0; i--)
-				{
-					if (closes[i] < closes[i - 1])
-						consecutiveBars++;
-				}
-				if (consecutiveBars < 2)
-					return Hold("Insufficient downward momentum (need 2+ consecutive down bars)");
-			}
-
-			// NEW: RSI CONFIRMATION (avoid extreme overbought/oversold)
-			var rsi = Indicators.RSIList(closes, 14);
-			if (rsi.Count <= idx)
-				return Hold("RSI data not available");
-
-			decimal rsiValue = rsi[idx];
+			decimal strength = Clamp01(baseStrength + volBonus + priceBonus);
 
 			if (upBar)
-			{
-				if (rsiValue > 80m)  // ⚖️ BALANCED: 80 (was 75)
-					return Hold($"RSI too high: {rsiValue:F1} - avoid buying into overbought");
-
-				if (rsiValue < 30m)  // ⚖️ BALANCED: 30 (was 40)
-					return Hold($"RSI too low: {rsiValue:F1} - need confirmation of strength");
-			}
+				return new("Buy", strength,
+					$"Volume spike ↑ ({volRatio:F2}x avg, +{priceMove:P1})");
 			else
-			{
-				if (rsiValue < 20m)  // ⚖️ BALANCED: 20 (was 25)
-					return Hold($"RSI too low: {rsiValue:F1} - avoid selling into oversold");
-
-				if (rsiValue > 70m)  // ⚖️ BALANCED: 70 (was 60)
-					return Hold($"RSI too high: {rsiValue:F1} - need confirmation of weakness");
-			}
-
-			// NEW: Check EMA separation (strong trend confirmation)
-			decimal emaSeparation = Math.Abs(ema20[idx] - ema50[idx]) / ema50[idx];
-			if (emaSeparation < 0.01m)  // ⚖️ BALANCED: 1% (was 2%)
-				return Hold($"Trend not strong enough: EMA separation {emaSeparation:P2} (need >1%)");
-
-			// NEW: Lower confidence due to volume signals being less reliable
-			decimal baseConfidence = 0.6m;  // ⚖️ BALANCED: Start at 60% (was 50%)
-
-			// Add confidence for exceptional volume
-			if (volRatio > 3.0m)
-				baseConfidence += 0.15m;  // Very high volume
-
-			// Add confidence for strong price move
-			if (priceChange > 0.03m)
-				baseConfidence += 0.1m;  // >3% move
-
-			// Add confidence for strong momentum
-			if (consecutiveBars >= 3)
-				baseConfidence += 0.1m;
-
-			decimal finalConfidence = Clamp01(baseConfidence);
-
-			string direction = upBar ? "Buy" : "Sell";
-			string reason = $"High volume {direction.ToLower()} confirmed: {volRatio:F1}x vol, {priceChange:P1} move, {consecutiveBars} bars momentum, RSI={rsiValue:F1}";
-
-			return new(direction, finalConfidence, reason);
+				return new("Sell", strength,
+					$"Volume spike ↓ ({volRatio:F2}x avg, {priceMove:P1})");
 		}
+
 
 		public static StrategySignal CciReversion(
 					List<decimal> highs,
@@ -798,20 +763,43 @@ namespace TraderBotV1
 			decimal volRatio = avgVol > 0 ? recentVol / avgVol : 1m;
 
 			// Buy when price crosses above VWAP with volume
-			if (closes[closes.Count - 2] <= vwap && price > vwap && volRatio > 1.2m)
+			if (closes[closes.Count - 2] <= vwap && price > vwap && volRatio > 0.8m)  // ⚖️ V2: 0.8x volume (was 1.2m)
 			{
-				decimal strength = Clamp01(Math.Abs(deviation) * 10m + (volRatio - 1m) * 0.3m);
+				decimal strength = Clamp01(Math.Abs(deviation) * 10m + Math.Max(volRatio - 0.8m, 0m) * 0.3m);
 				return new("Buy", strength, $"Price crossed above VWAP (${vwap:F2}) with {volRatio:F1}x volume");
 			}
 
 			// Sell when price crosses below VWAP with volume
-			if (closes[closes.Count - 2] >= vwap && price < vwap && volRatio > 1.2m)
+			if (closes[closes.Count - 2] >= vwap && price < vwap && volRatio > 0.8m)  // ⚖️ V2: 0.8x volume (was 1.2m)
 			{
-				decimal strength = Clamp01(Math.Abs(deviation) * 10m + (volRatio - 1m) * 0.3m);
+				decimal strength = Clamp01(Math.Abs(deviation) * 10m + Math.Max(volRatio - 0.8m, 0m) * 0.3m);
 				return new("Sell", strength, $"Price crossed below VWAP (${vwap:F2}) with {volRatio:F1}x volume");
 			}
 
-			return Hold($"Price near VWAP (${vwap:F2})");
+			// ⚖️ V2: NEW - Trade proximity to VWAP (coiling before breakout)
+			decimal vwapDistance = Math.Abs(deviation);
+			if (vwapDistance < 0.008m)  // Within 0.8% of VWAP
+			{
+				// Check directional momentum
+				int idx = closes.Count - 1;
+				bool priceRising = idx >= 2 && closes[idx] > closes[idx - 1] && closes[idx - 1] > closes[idx - 2];
+				bool priceFalling = idx >= 2 && closes[idx] < closes[idx - 1] && closes[idx - 1] < closes[idx - 2];
+
+				if (price < vwap && priceRising)
+				{
+					// Below VWAP but rising - potential breakout
+					decimal strength = Clamp01(0.48m + (1m - vwapDistance * 50m) * 0.15m);
+					return new("Buy", strength, $"Near VWAP (${vwap:F2}), rising, dist={vwapDistance:P2}");
+				}
+				else if (price > vwap && priceFalling)
+				{
+					// Above VWAP but falling - potential breakdown
+					decimal strength = Clamp01(0.48m + (1m - vwapDistance * 50m) * 0.15m);
+					return new("Sell", strength, $"Near VWAP (${vwap:F2}), falling, dist={vwapDistance:P2}");
+				}
+			}
+
+			return Hold($"Price near VWAP (${vwap:F2}), no clear setup");
 		}
 
 		public static StrategySignal IchimokuCloud(
@@ -1177,14 +1165,16 @@ namespace TraderBotV1
 			// Detect market regime
 			var regime = Indicators.DetectMarketRegime(closes, highs, lows);
 
-			// STRICTER: Only trade in STRONG trending markets
-			if (regime.Regime != Indicators.MarketRegime.StrongTrending)
+			// ⚖️ V2: Accept both strong and weak trends (reject only ranging/volatile/quiet)
+			if (regime.Regime == Indicators.MarketRegime.Ranging ||
+				regime.Regime == Indicators.MarketRegime.Volatile ||
+				regime.Regime == Indicators.MarketRegime.Quiet)
 			{
-				return Hold($"Not strong trending - {regime.Description}");
+				return Hold($"Not trending - {regime.Description}");
 			}
 
-			// STRICTER: Require high regime confidence
-			if (regime.RegimeConfidence < 0.7m)
+			// ⚖️ V2: Lower regime confidence requirement (was 0.7m)
+			if (regime.RegimeConfidence < 0.5m)
 			{
 				return Hold($"Low regime confidence: {regime.RegimeConfidence:P0}");
 			}
