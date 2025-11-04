@@ -17,11 +17,11 @@ namespace TraderBotV1
 		private readonly List<TradingSignal> _sessionSignals;
 
 		// ⚖️ IMPROVED THRESHOLDS - More aggressive signal generation
-		private const int MIN_VOTES_REQUIRED = 2;              // ⭐ REDUCED: Need only 2 strategies
+		private const int MIN_VOTES_REQUIRED = 3;              // ⭐ REDUCED: Need only 2 strategies
 		private const decimal MIN_STRATEGY_CONFIDENCE = 0.35m; // ⭐ REDUCED: 35% to count as a vote (was 45%)
-		private const decimal MIN_FINAL_CONFIDENCE = 0.40m;    // ⭐ REDUCED: 40% for final decision (was 48%)
+		private const decimal MIN_FINAL_CONFIDENCE = 0.45m;    // ⭐ REDUCED: 40% for final decision (was 48%)
 		private const decimal MIN_QUALITY_SCORE = 0.20m;       // ⭐ REDUCED: 20% quality threshold (was 30%)
-		private const int MIN_STRATEGIES_FOR_ENTRY = 2;        // Need 2 strategies minimum
+		private const int MIN_STRATEGIES_FOR_ENTRY = 3;        // Need 2 strategies minimum
 
 		public TradeEngineEnhanced(SqliteStorage db, decimal riskPercent = 0.01m,
 			EmailNotificationService? emailService = null)
