@@ -233,15 +233,15 @@ namespace TraderBotV1.Data
 		/// Insert a trade record with optional bar date
 		/// </summary>
 		public void InsertTrade(string symbol, DateTime signalTimestamp, string side,
-			long quantity, decimal price, DateTime? barDate = null)
+			long quantity, decimal price, decimal confidence,decimal qualityScore,DateTime? barDate = null)
 		{
 			using var conn = new SqliteConnection(_connectionString);
 			conn.Open();
 
 			var cmd = conn.CreateCommand();
 			cmd.CommandText = @"
-                INSERT INTO trades (symbol, signal_timestamp, bar_date, side, quantity, price, total_value)
-                VALUES (@symbol, @signal_timestamp, @bar_date, @side, @quantity, @price, @total_value)";
+                INSERT INTO trades (symbol, signal_timestamp, bar_date, side, quantity, price, total_value,confidence,quality)
+                VALUES (@symbol, @signal_timestamp, @bar_date, @side, @quantity, @price, @total_value,@confidence,@quality)";
 
 			cmd.Parameters.AddWithValue("@symbol", symbol);
 			cmd.Parameters.AddWithValue("@signal_timestamp", signalTimestamp.ToString("yyyy-MM-dd HH:mm:ss"));
@@ -251,6 +251,8 @@ namespace TraderBotV1.Data
 			cmd.Parameters.AddWithValue("@side", side);
 			cmd.Parameters.AddWithValue("@quantity", quantity);
 			cmd.Parameters.AddWithValue("@price", (double)price);
+			cmd.Parameters.AddWithValue("@confidence", (double)confidence);
+			cmd.Parameters.AddWithValue("@quality", (double)qualityScore);
 			cmd.Parameters.AddWithValue("@total_value", (double)(quantity * price));
 
 			cmd.ExecuteNonQuery();
@@ -341,6 +343,39 @@ namespace TraderBotV1.Data
 			}
 
 			return symbols;
+		}
+
+		public List<string> GetTradedSymbols()
+		{
+			using var conn = new SqliteConnection(_connectionString);
+			conn.Open();
+
+			var cmd = conn.CreateCommand();
+			cmd.CommandText = @"select distinct symbol from tradeshistory order by symbol";
+
+			var symbols = new List<string>();
+			using var reader = cmd.ExecuteReader();
+
+			while (reader.Read())
+			{
+				symbols.Add(reader.GetString(0));
+			}
+
+			return symbols;
+		}
+
+		public void UpdateCurrentValue(string symbol , decimal current_price)
+		{
+			using var conn = new SqliteConnection(_connectionString);
+			conn.Open();
+
+			var cmd = conn.CreateCommand();
+			cmd.CommandText = "UPDATE TradesHistory SET current_price = @current_price , lastupdatedon = @lastupdatedon where symbol = @symbol";
+			cmd.Parameters.AddWithValue("@current_price", (double)current_price);
+			cmd.Parameters.AddWithValue("@lastupdatedon", DateTime.Now.ToString());
+			cmd.Parameters.AddWithValue("@symbol", symbol);
+
+			cmd.ExecuteNonQuery();
 		}
 
 		/// <summary>

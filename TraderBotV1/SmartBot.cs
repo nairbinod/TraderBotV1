@@ -69,6 +69,17 @@ namespace TraderBotV1
 			await _engine.SendSessionNotificationsAsync("nairbinod@gmail.com");
 			// Print summary
 			PrintSummary(results);
+
+			UpdateTradedSymbols();
+		}
+
+		private void UpdateTradedSymbols()
+		{
+			var symbols = GetTradedSymbols();
+			foreach (var symbol in symbols)
+			{
+				UpdateCurrentValue(symbol);
+			}
 		}
 
 		private string[] GetSymbolsToAnalyze()
@@ -99,6 +110,62 @@ namespace TraderBotV1
 			return new[] { "SPY", "QQQ", "AAPL", "MSFT", "TSLA" };
 		}
 
+		private string[] GetTradedSymbols()
+		{
+			// Priority 1: Use symbols from config
+			if (_cfg.Symbols != null && _cfg.Symbols.Length > 0)
+			{
+				return _cfg.Symbols;
+			}
+
+			// Priority 2: Get active symbols from database
+			try
+			{
+				var dbSymbols = _db.GetTradedSymbols().ToArray();
+				if (dbSymbols.Length > 0)
+				{
+					Console.WriteLine($"📋 Loaded Traded {dbSymbols.Length} symbols from database");
+					return dbSymbols;
+				}
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"⚠️ Failed to load symbols from database: {ex.Message}");
+			}
+
+			// Priority 3: Use default watchlist
+			Console.WriteLine("📋 Using default watchlist");
+			return new[] { "SPY", "QQQ", "AAPL", "MSFT", "TSLA" };
+		}
+
+		private async Task<decimal> FetchCurrentPrice(string symbol)
+		{
+			try
+			{
+				// Fetch market data
+				Console.WriteLine($"   📡 Fetching market data for {symbol}...");
+				var bars = await _dataProvider.GetBarsAsync(symbol, 1);
+				return bars.Last().Close;
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"   ❌ Error processing {symbol}: {ex.Message}");
+			}
+			return 0;
+		}
+		private void UpdateCurrentValue(string symbol)
+		{
+			try
+			{
+				var currentPrice = FetchCurrentPrice(symbol).Result;
+				_db.UpdateCurrentValue(symbol, currentPrice);
+				Console.WriteLine($"   💾 Updated current price for {symbol} to {currentPrice}");
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"   ❌ Error updating current price for {symbol}: {ex.Message}");
+			}
+		}
 		private async Task<ProcessResult> ProcessSymbolAsync(string symbol)
 		{
 			var result = new ProcessResult { Symbol = symbol };
