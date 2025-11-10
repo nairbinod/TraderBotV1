@@ -94,7 +94,8 @@ namespace TraderBotV1.Data
 
 			// Calculate date range (exclude recent days to avoid partial data)
 			DateTime endDate = DateTime.Now.AddDays(-LOOKBACK_BUFFER_DAYS);
-			var end = endDate.AddHours(-1);// AddDays(-LOOKBACK_BUFFER_DAYS);
+			var end = endDate.AddHours(-1);//ToDateTime(new TimeOnly(16, 00, 00));
+			
 			var start = end.AddDays(-daysHistory);
 
 			// Determine timeframe based on history length

@@ -5,6 +5,13 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
+// Ensure that the Newtonsoft.Json package is installed in your project.
+// You can install it via NuGet Package Manager in Visual Studio or by running the following command in the Package Manager Console:
+// Install-Package Newtonsoft.Json
+
+// Once the package is installed, the error CS0246 should be resolved as the namespace 'Newtonsoft.Json.Linq' will now be available.
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace TraderBotV1
 {
@@ -82,13 +89,26 @@ namespace TraderBotV1
 		/// Sends a custom email notification
 		/// </summary>
 		public async Task<bool> SendEmailAsync(
-			string recipientEmail,
+			string recipientEmails,
 			string subject,
 			string htmlContent,
 			string textContent = null)
 		{
 			try
 			{
+				var from = new
+				{
+					Email = _senderEmail,
+					Name = _senderName
+				};
+				var toAddresses = recipientEmails
+									.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+									.Select(e => e.Trim())
+									.Where(e => e.Length > 0)
+									.Distinct(StringComparer.OrdinalIgnoreCase)
+									.Select(e => new Dictionary<string, string> { ["Email"] = e })
+									.ToList();
+
 				var payload = new
 				{
 					Messages = new[]
@@ -104,9 +124,10 @@ namespace TraderBotV1
 							{
 								new
 								{
-									Email = recipientEmail
+									Email = _senderEmail
 								}
 							},
+							Bcc = toAddresses,
 							Subject = subject,
 							TextPart = textContent ?? StripHtml(htmlContent),
 							HTMLPart = htmlContent
@@ -124,7 +145,7 @@ namespace TraderBotV1
 
 				if (response.IsSuccessStatusCode)
 				{
-					Console.WriteLine($"✅ Email sent successfully to {recipientEmail}");
+					Console.WriteLine($"✅ Email sent successfully");
 					return true;
 				}
 				else
@@ -142,6 +163,17 @@ namespace TraderBotV1
 			}
 		}
 
+		private static List<string> ParseEmails(string emails)
+		{
+			if (string.IsNullOrWhiteSpace(emails)) return new List<string>();
+			// split on comma or semicolon
+			var list = emails
+				.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+				.Select(s => s.Trim())
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			return list;
+		}
 		/// <summary>
 		/// Generates HTML email content for buy signals
 		/// </summary>
@@ -155,19 +187,22 @@ namespace TraderBotV1
 <head>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
-        .container { background-color: white; max-width: 800px; margin: 0 auto; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .container { background-color: white; max-width: 1000px; margin: 0 auto; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px 10px 0 0; margin: -30px -30px 20px -30px; }
         h1 { margin: 0; font-size: 28px; }
         .timestamp { font-size: 14px; opacity: 0.9; margin-top: 5px; }
-        .signal-card { background-color: #f8f9fa; border-left: 4px solid #28a745; padding: 20px; margin-bottom: 20px; border-radius: 5px; }
-        .symbol { font-size: 24px; font-weight: bold; color: #28a745; margin-bottom: 10px; }
-        .confidence { display: inline-block; background-color: #28a745; color: white; padding: 5px 15px; border-radius: 20px; font-size: 14px; font-weight: bold; }
-        .details { margin-top: 15px; }
-        .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e0e0e0; }
-        .detail-label { font-weight: bold; color: #555; }
-        .detail-value { color: #333; }
+        .signal-table { width: 100%; border-collapse: collapse; margin: 20px 0; background-color: white; }
+        .signal-table thead { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; }
+        .signal-table th { padding: 12px; text-align: left; font-weight: bold; font-size: 14px; }
+        .signal-table td { padding: 12px; border-bottom: 1px solid #e0e0e0; }
+        .signal-table tbody tr:hover { background-color: #f8f9fa; }
+        .signal-table tbody tr:last-child td { border-bottom: none; }
+        .symbol { font-weight: bold; color: #28a745; font-size: 16px; }
+        .confidence { background-color: #28a745; color: white; padding: 4px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; display: inline-block; }
         .footer { margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; color: #888; font-size: 12px; }
         .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px; border-radius: 5px; }
+        .summary { background-color: #e7f3ff; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .summary strong { color: #0066cc; }
     </style>
 </head>
 <body>
@@ -175,44 +210,41 @@ namespace TraderBotV1
         <div class='header'>
             <h1>🚀 Buy Signals Detected</h1>
             <div class='timestamp'>" + DateTime.UtcNow.ToString("MMMM dd, yyyy HH:mm") + @" UTC</div>
-        </div>");
+        </div>
+        <div class='summary'>
+            <strong>Total Signals:</strong> " + signals.Count + @"
+        </div>
+        <table class='signal-table'>
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Entry Price</th>
+                    <th>Confidence</th>
+                    <th>Stop Distance</th>
+                    <th>Signal Date</th>
+                    <th>Strategies</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>");
 
 			foreach (var signal in signals)
 			{
 				sb.AppendLine($@"
-        <div class='signal-card'>
-            <div class='symbol'>{signal.Symbol}</div>
-            <div class='confidence'>Confidence: {signal.Confidence:P0}</div>
-            <div class='details'>
-                <div class='detail-row'>
-                    <span class='detail-label'>Entry Price:</span>
-                    <span class='detail-value'>${signal.EntryPrice:F2}</span>
-                </div>
-                <div class='detail-row'>
-                    <span class='detail-label'>Quantity:</span>
-                    <span class='detail-value'>{signal.Quantity:N0} shares</span>
-                </div>
-                <div class='detail-row'>
-                    <span class='detail-label'>Position Value:</span>
-                    <span class='detail-value'>${signal.EntryPrice * signal.Quantity:N2}</span>
-                </div>
-                <div class='detail-row'>
-                    <span class='detail-label'>Stop Distance:</span>
-                    <span class='detail-value'>${signal.StopDistance:F2}</span>
-                </div>
-                <div class='detail-row'>
-                    <span class='detail-label'>Strategies Confirmed:</span>
-                    <span class='detail-value'>{signal.ConfirmedStrategies}</span>
-                </div>
-                <div class='detail-row'>
-                    <span class='detail-label'>Reason:</span>
-                    <span class='detail-value'>{signal.Reason}</span>
-                </div>
-            </div>
-        </div>");
+                <tr>
+                    <td class='symbol'>{signal.Symbol}</td>
+                    <td>${signal.EntryPrice:F2}</td>
+                    <td><span class='confidence'>{signal.Confidence:P0}</span></td>
+                    <td>${signal.StopDistance:F2}</td>
+                    <td>{signal.LastBarDate:MM/dd/yyyy}</td>
+                    <td>{signal.ConfirmedStrategies}</td>
+                    <td>{signal.Reason}</td>
+                </tr>");
 			}
 
 			sb.AppendLine(@"
+            </tbody>
+        </table>
         <div class='warning'>
             ⚠️ <strong>Disclaimer:</strong> This is an automated trading signal. Always verify signals manually before executing trades. Past performance does not guarantee future results.
         </div>
@@ -234,31 +266,36 @@ namespace TraderBotV1
 		{
 			var sb = new StringBuilder();
 
-			sb.AppendLine("═══════════════════════════════════════════════════════");
+			sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════════");
 			sb.AppendLine("🚀 BUY SIGNALS DETECTED");
-			sb.AppendLine("═══════════════════════════════════════════════════════");
+			sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════════");
 			sb.AppendLine($"Date: {DateTime.UtcNow:MMMM dd, yyyy HH:mm} UTC");
 			sb.AppendLine($"Total Signals: {signals.Count}");
-			sb.AppendLine("═══════════════════════════════════════════════════════\n");
+			sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════════");
+			sb.AppendLine();
+			sb.AppendLine(string.Format("{0,-8} {1,10} {2,10} {3,12} {4,12} {5,4} {6}",
+				"Symbol", "Entry", "Confidence", "Stop Dist", "Date", "Strat", "Reason"));
+			sb.AppendLine("───────────────────────────────────────────────────────────────────────────────────");
 
 			foreach (var signal in signals)
 			{
-				sb.AppendLine($"Symbol: {signal.Symbol}");
-				sb.AppendLine($"Confidence: {signal.Confidence:P0}");
-				sb.AppendLine($"Entry Price: ${signal.EntryPrice:F2}");
-				sb.AppendLine($"Quantity: {signal.Quantity:N0} shares");
-				sb.AppendLine($"Position Value: ${signal.EntryPrice * signal.Quantity:N2}");
-				sb.AppendLine($"Stop Distance: ${signal.StopDistance:F2}");
-				sb.AppendLine($"Strategies Confirmed: {signal.ConfirmedStrategies}");
-				sb.AppendLine($"Reason: {signal.Reason}");
-				sb.AppendLine("───────────────────────────────────────────────────────\n");
+				sb.AppendLine(string.Format("{0,-8} ${1,9:F2} {2,10:P0} ${3,11:F2} {4,12:MM/dd/yyyy} {5,4} {6}",
+					signal.Symbol,
+					signal.EntryPrice,
+					signal.Confidence,
+					signal.StopDistance,
+					signal.LastBarDate,
+					signal.ConfirmedStrategies,
+					signal.Reason.Length > 30 ? signal.Reason.Substring(0, 27) + "..." : signal.Reason));
 			}
 
+			sb.AppendLine("───────────────────────────────────────────────────────────────────────────────────");
+			sb.AppendLine();
 			sb.AppendLine("⚠️ DISCLAIMER:");
-			sb.AppendLine("This is an automated trading signal. Always verify signals");
-			sb.AppendLine("manually before executing trades. Past performance does not");
-			sb.AppendLine("guarantee future results.");
-			sb.AppendLine("\n═══════════════════════════════════════════════════════");
+			sb.AppendLine("This is an automated trading signal. Always verify signals manually before executing");
+			sb.AppendLine("trades. Past performance does not guarantee future results.");
+			sb.AppendLine();
+			sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════════");
 			sb.AppendLine("Generated by SmartBot Trading System");
 
 			return sb.ToString();
@@ -292,5 +329,6 @@ namespace TraderBotV1
 		public int ConfirmedStrategies { get; set; }
 		public string Reason { get; set; } = "";
 		public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+		public DateTime LastBarDate { get; set; }
 	}
 }

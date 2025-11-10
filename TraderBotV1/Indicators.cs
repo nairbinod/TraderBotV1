@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using static TraderBotV1.SignalValidator;
 
 namespace TraderBotV1
 {
@@ -888,8 +889,485 @@ namespace TraderBotV1
 
 			return (n * sumXY - sumX * sumY) / denominator;
 		}
+
+
+		/// <summary> 11/8/2026
+		/// NEW INDICATORS - Enhanced technical analysis indicators
+		/// Add these to your existing Indicators.cs or use as a separate file
+		/// </summary>
+
+		// ══════════════════════════════════════════════════════════════════
+		// VOLUME-BASED INDICATORS
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>Money Flow Index - Volume-weighted RSI</summary>
+		public static List<decimal> MFIList(
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> closes,
+			List<decimal> volumes,
+			int period = 14)
+		{
+			var result = new List<decimal>();
+			if (closes.Count < period + 1 || volumes.Count != closes.Count)
+				return result;
+
+			var typicalPrices = new List<decimal>();
+			var rawMoneyFlow = new List<decimal>();
+
+			// Calculate typical price and money flow
+			for (int i = 0; i < closes.Count; i++)
+			{
+				decimal tp = (highs[i] + lows[i] + closes[i]) / 3m;
+				typicalPrices.Add(tp);
+				rawMoneyFlow.Add(tp * volumes[i]);
+			}
+
+			// Calculate MFI for each period
+			for (int i = period; i < closes.Count; i++)
+			{
+				decimal positiveFlow = 0m;
+				decimal negativeFlow = 0m;
+
+				for (int j = i - period + 1; j <= i; j++)
+				{
+					if (typicalPrices[j] > typicalPrices[j - 1])
+						positiveFlow += rawMoneyFlow[j];
+					else if (typicalPrices[j] < typicalPrices[j - 1])
+						negativeFlow += rawMoneyFlow[j];
+				}
+
+				decimal mfi = negativeFlow == 0 ? 100m :
+					100m - (100m / (1m + (positiveFlow / Math.Max(negativeFlow, 1e-10m))));
+
+				result.Add(Math.Round(mfi, 2));
+			}
+
+			return result;
+		}
+
+		/// <summary>Chaikin Money Flow - Measures buying/selling pressure</summary>
+		public static List<decimal> CMFList(
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> closes,
+			List<decimal> volumes,
+			int period = 20)
+		{
+			var result = new List<decimal>();
+			if (closes.Count < period || volumes.Count != closes.Count)
+				return result;
+
+			var moneyFlowVolume = new List<decimal>();
+
+			// Calculate Money Flow Volume for each bar
+			for (int i = 0; i < closes.Count; i++)
+			{
+				decimal range = highs[i] - lows[i];
+				if (range == 0)
+				{
+					moneyFlowVolume.Add(0m);
+					continue;
+				}
+
+				// Money Flow Multiplier
+				decimal mfMultiplier = ((closes[i] - lows[i]) - (highs[i] - closes[i])) / range;
+				decimal mfv = mfMultiplier * volumes[i];
+				moneyFlowVolume.Add(mfv);
+			}
+
+			// Calculate CMF for each period
+			for (int i = period - 1; i < closes.Count; i++)
+			{
+				decimal mfvSum = moneyFlowVolume.Skip(i - period + 1).Take(period).Sum();
+				decimal volumeSum = volumes.Skip(i - period + 1).Take(period).Sum();
+
+				decimal cmf = volumeSum == 0 ? 0m : mfvSum / volumeSum;
+				result.Add(Math.Round(cmf, 4));
+			}
+
+			return result;
+		}
+
+		/// <summary>Elder's Force Index - Combines price, volume, and momentum</summary>
+		public static List<decimal> ForceIndexList(
+			List<decimal> closes,
+			List<decimal> volumes,
+			int period = 13)
+		{
+			if (closes.Count < 2 || volumes.Count != closes.Count)
+				return new List<decimal>();
+
+			var rawForce = new List<decimal>();
+
+			// Calculate raw force
+			for (int i = 1; i < closes.Count; i++)
+			{
+				decimal force = (closes[i] - closes[i - 1]) * volumes[i];
+				rawForce.Add(force);
+			}
+
+			// Smooth with EMA
+			var smoothedForce = Indicators.EMAList(rawForce, period);
+
+			// Pad with zeros at the beginning
+			smoothedForce.Insert(0, 0m);
+
+			return smoothedForce;
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// MOMENTUM INDICATORS
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>Rate of Change - Pure momentum indicator</summary>
+		public static List<decimal> ROCList(List<decimal> closes, int period = 12)
+		{
+			var result = new List<decimal>();
+			if (closes.Count < period + 1)
+				return result;
+
+			for (int i = period; i < closes.Count; i++)
+			{
+				decimal roc = ((closes[i] - closes[i - period]) / closes[i - period]) * 100m;
+				result.Add(Math.Round(roc, 2));
+			}
+
+			return result;
+		}
+
+		/// <summary>True Strength Index - Double-smoothed momentum</summary>
+		public static (List<decimal> tsi, List<decimal> signal) TSIList(
+			List<decimal> closes,
+			int longPeriod = 25,
+			int shortPeriod = 13,
+			int signalPeriod = 7)
+		{
+			var tsiValues = new List<decimal>();
+			var signalLine = new List<decimal>();
+
+			if (closes.Count < longPeriod + shortPeriod + signalPeriod)
+				return (tsiValues, signalLine);
+
+			// Calculate price changes
+			var priceChanges = new List<decimal>();
+			var absChanges = new List<decimal>();
+			for (int i = 1; i < closes.Count; i++)
+			{
+				decimal change = closes[i] - closes[i - 1];
+				priceChanges.Add(change);
+				absChanges.Add(Math.Abs(change));
+			}
+
+			// Double smoothing of absolute price changes
+			var singleSmoothAbs = Indicators.EMAList(absChanges, longPeriod);
+			var doubleSmoothAbs = Indicators.EMAList(singleSmoothAbs, shortPeriod);
+
+			// Double smoothing of price changes
+			var singleSmoothChange = Indicators.EMAList(priceChanges, longPeriod);
+			var doubleSmoothChange = Indicators.EMAList(singleSmoothChange, shortPeriod);
+
+			// Calculate TSI
+			int minLength = Math.Min(doubleSmoothAbs.Count, doubleSmoothChange.Count);
+			for (int i = 0; i < minLength; i++)
+			{
+				if (doubleSmoothAbs[i] == 0)
+					tsiValues.Add(0m);
+				else
+				{
+					decimal tsi = 100m * (doubleSmoothChange[i] / doubleSmoothAbs[i]);
+					tsiValues.Add(Math.Round(tsi, 2));
+				}
+			}
+
+			// Calculate signal line
+			if (tsiValues.Count >= signalPeriod)
+				signalLine = Indicators.EMAList(tsiValues, signalPeriod);
+
+			return (tsiValues, signalLine);
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// TREND INDICATORS
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Supertrend Indicator - Strong trend following indicator
+		/// Returns: (supertrend values, direction list where 1=up, -1=down)
+		/// </summary>
+		public static (List<decimal> supertrend, List<int> direction) SupertrendList(
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> closes,
+			int period = 10,
+			decimal multiplier = 3m)
+		{
+			var supertrendValues = new List<decimal>();
+			var direction = new List<int>();
+
+			if (closes.Count < period + 10)
+				return (supertrendValues, direction);
+
+			var atr = Indicators.ATRList(highs, lows, closes, period);
+			if (atr.Count == 0)
+				return (supertrendValues, direction);
+
+			var basicUpperBand = new List<decimal>();
+			var basicLowerBand = new List<decimal>();
+			var finalUpperBand = new List<decimal>();
+			var finalLowerBand = new List<decimal>();
+
+			for (int i = 0; i < closes.Count; i++)
+			{
+				decimal hl2 = (highs[i] + lows[i]) / 2m;
+				decimal atrValue = i < atr.Count ? atr[i] : 0m;
+
+				decimal basicUpper = hl2 + multiplier * atrValue;
+				decimal basicLower = hl2 - multiplier * atrValue;
+
+				basicUpperBand.Add(basicUpper);
+				basicLowerBand.Add(basicLower);
+
+				// Calculate final bands
+				decimal finalUpper = i == 0 || basicUpper < finalUpperBand[i - 1] ||
+					closes[i - 1] > finalUpperBand[i - 1] ? basicUpper : finalUpperBand[i - 1];
+
+				decimal finalLower = i == 0 || basicLower > finalLowerBand[i - 1] ||
+					closes[i - 1] < finalLowerBand[i - 1] ? basicLower : finalLowerBand[i - 1];
+
+				finalUpperBand.Add(finalUpper);
+				finalLowerBand.Add(finalLower);
+
+				// Determine direction
+				int currentDirection = i == 0 ? 1 : direction[i - 1];
+				if (currentDirection == -1 && closes[i] > finalUpper)
+					currentDirection = 1;
+				else if (currentDirection == 1 && closes[i] < finalLower)
+					currentDirection = -1;
+
+				direction.Add(currentDirection);
+
+				// Supertrend value
+				decimal stValue = currentDirection == 1 ? finalLower : finalUpper;
+				supertrendValues.Add(Math.Round(stValue, 4));
+			}
+
+			return (supertrendValues, direction);
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// UTILITY INDICATORS
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>Bollinger %B - Normalized position within Bollinger Bands</summary>
+		public static List<decimal?> BollingerPercentB(
+			List<decimal> closes,
+			List<decimal?> upper,
+			List<decimal?> lower)
+		{
+			var result = new List<decimal?>();
+
+			for (int i = 0; i < closes.Count; i++)
+			{
+				if (i >= upper.Count || i >= lower.Count ||
+					upper[i] == null || lower[i] == null)
+				{
+					result.Add(null);
+					continue;
+				}
+
+				decimal bandWidth = upper[i].Value - lower[i].Value;
+				if (bandWidth == 0)
+				{
+					result.Add(0.5m);
+					continue;
+				}
+
+				decimal percentB = (closes[i] - lower[i].Value) / bandWidth;
+				result.Add(Math.Round(percentB, 4));
+			}
+
+			return result;
+		}
+
+		/// <summary>
+		/// Estimate Volume from Price Action
+		/// Use when actual volume data is unavailable
+		/// </summary>
+		public static List<decimal> EstimateVolume(
+			List<decimal> closes,
+			List<decimal> highs,
+			List<decimal> lows)
+		{
+			var estimatedVolume = new List<decimal>();
+
+			// First bar gets baseline
+			estimatedVolume.Add(100000m);
+
+			for (int i = 1; i < closes.Count; i++)
+			{
+				// Use True Range as proxy for activity
+				decimal trueRange = Math.Max(
+					highs[i] - lows[i],
+					Math.Max(
+						Math.Abs(highs[i] - closes[i - 1]),
+						Math.Abs(lows[i] - closes[i - 1])
+					)
+				);
+
+				// Price change magnitude
+				decimal priceChange = Math.Abs(closes[i] - closes[i - 1]);
+
+				// Combine for volume estimate
+				// Higher volatility and larger moves = higher estimated volume
+				decimal baseEstimate = 100000m;
+				decimal volatilityMultiplier = 1m + (trueRange / closes[i]);
+				decimal momentumMultiplier = 1m + (priceChange / closes[i - 1]);
+
+				decimal estimatedVol = baseEstimate * volatilityMultiplier * momentumMultiplier;
+				estimatedVolume.Add(Math.Round(estimatedVol, 0));
+			}
+
+			return estimatedVolume;
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// VALIDATION HELPERS FOR NEW INDICATORS
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>Validate MFI signal</summary>
+		public static SignalValidation ValidateMFI(
+			List<decimal> mfi,
+			int idx,
+			string direction)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 2 || mfi.Count <= idx)
+				return validation.Fail("Insufficient MFI data");
+
+			decimal currentMFI = mfi[idx];
+			decimal prevMFI = mfi[idx - 1];
+			bool isBuy = direction == "Buy";
+
+			if (isBuy)
+			{
+				// Oversold and turning up
+				if (currentMFI < 25m && currentMFI > prevMFI)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m + ((25m - currentMFI) / 25m) * 0.20m;
+					validation.Reason = $"MFI oversold reversal ({currentMFI:F1})";
+				}
+				// Bullish divergence zone
+				else if (currentMFI < 35m && currentMFI > prevMFI)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m;
+					validation.Reason = $"MFI bullish momentum ({currentMFI:F1})";
+				}
+			}
+			else
+			{
+				// Overbought and turning down
+				if (currentMFI > 75m && currentMFI < prevMFI)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m + ((currentMFI - 75m) / 25m) * 0.20m;
+					validation.Reason = $"MFI overbought reversal ({currentMFI:F1})";
+				}
+				// Bearish divergence zone
+				else if (currentMFI > 65m && currentMFI < prevMFI)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m;
+					validation.Reason = $"MFI bearish momentum ({currentMFI:F1})";
+				}
+			}
+
+			return validation;
+		}
+
+		/// <summary>Validate Supertrend signal</summary>
+		public static SignalValidation ValidateSupertrend(
+			List<decimal> supertrend,
+			List<int> direction,
+			List<decimal> closes,
+			int idx)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 2 || direction.Count <= idx)
+				return validation.Fail("Insufficient Supertrend data");
+
+			int currentDir = direction[idx];
+			int prevDir = direction[idx - 1];
+
+			// Check for direction change
+			if (currentDir != prevDir)
+			{
+				validation.IsValid = true;
+
+				if (currentDir == 1)
+				{
+					// Bullish flip
+					validation.Confidence = 0.75m;
+					validation.Reason = $"Supertrend bullish flip (${closes[idx]:F2} > ${supertrend[idx]:F2})";
+				}
+				else
+				{
+					// Bearish flip
+					validation.Confidence = 0.75m;
+					validation.Reason = $"Supertrend bearish flip (${closes[idx]:F2} < ${supertrend[idx]:F2})";
+				}
+			}
+
+			return validation;
+		}
+
+		/// <summary>Validate CMF signal</summary>
+		public static SignalValidation ValidateCMF(
+			List<decimal> cmf,
+			int idx,
+			string direction)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 3 || cmf.Count <= idx)
+				return validation.Fail("Insufficient CMF data");
+
+			decimal currentCMF = cmf[idx];
+			decimal prevCMF = cmf[idx - 1];
+			bool isBuy = direction == "Buy";
+
+			if (isBuy)
+			{
+				// Strong buying pressure
+				if (currentCMF > 0.05m && currentCMF > prevCMF)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m + Math.Min(currentCMF * 2m, 0.30m);
+					validation.Reason = $"CMF buying pressure ({currentCMF:F3})";
+				}
+			}
+			else
+			{
+				// Strong selling pressure
+				if (currentCMF < -0.05m && currentCMF < prevCMF)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m + Math.Min(Math.Abs(currentCMF) * 2m, 0.30m);
+					validation.Reason = $"CMF selling pressure ({currentCMF:F3})";
+				}
+			}
+
+			return validation;
+		}
 	}
 
+	
+	
+	
 	// ═══════════════════════════════════════════════════════════════
 	// SIGNAL VALIDATION FRAMEWORK
 	// ═══════════════════════════════════════════════════════════════
@@ -1362,5 +1840,8 @@ namespace TraderBotV1
 			if (trendAligned) conf += 0.05m;
 			return Math.Min(conf, 1m);
 		}
+
+		
+
 	}
 }

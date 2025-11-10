@@ -8,11 +8,11 @@ namespace TraderBotV1.Data
 	public class SqliteStorage
 	{
 		private readonly string _connectionString;
-		private const string DB_FILE = "TraderBot.v1.db";
+		private const string DB_FILE = @"C:\github\nairbinod\TraderBotV1\TraderBotV1\Data\TraderBot.v1.db";
 
-		public SqliteStorage(string? dbPath = null)
+		public SqliteStorage(string dbPath)
 		{
-			dbPath = @"C:\github\nairbinod\TraderBotV1\TraderBotV1\Data\TraderBot.v1.db";
+			//dbPath = @"C:\github\nairbinod\TraderBotV1\TraderBotV1\Data\TraderBot.v1.db";
 			_connectionString = $"Data Source={dbPath ?? DB_FILE}";
 			InitializeDatabase();
 		}

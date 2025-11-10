@@ -23,6 +23,7 @@
     <PackageReference Include="Alpaca.Markets" Version="8.0.0-beta4" />
     <PackageReference Include="Alpaca.Markets.Extensions" Version="7.2.0" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.10" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
   </ItemGroup>
 

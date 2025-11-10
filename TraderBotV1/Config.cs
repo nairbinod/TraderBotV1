@@ -13,6 +13,7 @@ namespace TraderBotV1
 	public class Config
 	{
 		// Data Source Configuration
+		public string DBPath { get; set; }
 		public string? Mode { get; set; } = "Auto";
 		public string? DataSource { get; set; } = "Auto";
 		public int DaysHistory { get; set; } = 180;

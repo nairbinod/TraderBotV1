@@ -29,7 +29,7 @@ namespace TraderBotV1
 				PrintConfiguration(cfg);
 
 				// Initialize database
-				var db = InitializeDatabase();
+				var db = InitializeDatabase(cfg);
 
 				// Build market data provider (Polygon or Alpaca)
 				var dataProvider = DataProviderFactory.Create(cfg);
@@ -40,6 +40,12 @@ namespace TraderBotV1
 				{
 					emailService = InitializeEmailService(cfg);
 				}
+
+				//emailService.SendEmailAsync(
+				//	cfg.NotificationEmail,
+				//	"SmartBot Started",
+				//	"SmartBot trading system has started successfully."
+				//).Wait();
 
 				// Optional: Initialize trading client (if live trading enabled)
 				IAlpacaTradingClient? tradingClient = null;
@@ -141,12 +147,12 @@ namespace TraderBotV1
 					throw new InvalidOperationException("MailJet configuration is invalid");
 				}
 
-				// Validate notification email format
-				if (!string.IsNullOrWhiteSpace(cfg.NotificationEmail) &&
-					!cfg.MailJet.IsValidEmail(cfg.NotificationEmail))
-				{
-					throw new InvalidOperationException($"Invalid notification email format: {cfg.NotificationEmail}");
-				}
+				//// Validate notification email format
+				//if (!string.IsNullOrWhiteSpace(cfg.NotificationEmail) &&
+				//	!cfg.MailJet.IsValidEmail(cfg.NotificationEmail))
+				//{
+				//	throw new InvalidOperationException($"Invalid notification email format: {cfg.NotificationEmail}");
+				//}
 			}
 
 			Console.WriteLine("✅ Configuration validated\n");
@@ -209,12 +215,12 @@ namespace TraderBotV1
 			}
 		}
 
-		private static SqliteStorage InitializeDatabase()
+		private static SqliteStorage InitializeDatabase(Config config)
 		{
 			try
 			{
 				Console.WriteLine("💾 Initializing database...");
-				var db = new SqliteStorage();
+				var db = new SqliteStorage(config.DBPath);
 				Console.WriteLine("✅ Database ready\n");
 				return db;
 			}

@@ -30,6 +30,8 @@ Unified indicator class containing all technical indicators:
 - `AnalyzeVolume()` - Volume analysis with OBV
 - `RecognizePatterns()` - Candlestick pattern recognition
 
+- 
+
 # 11/3/2025 - Updates
 
 # Quick Reference: Before vs After Modifications
@@ -1106,3 +1108,34 @@ Use 1% position sizes, tight stops, and you should see consistent, high-quality 
 **Status**: ✅ Ready to use  
 **Recommended for**: Most users seeking quality signals  
 **Risk level**: Moderate (use proper position sizing)
+
+## 11/8/2025
+
+### 2. **NewIndicators.cs** (15KB)
+Production-ready indicators including:
+- Money Flow Index (MFI) - Volume-weighted RSI
+- Chaikin Money Flow (CMF) - Accumulation/distribution
+- Elder's Force Index - Price + volume momentum
+- Rate of Change (ROC) - Pure momentum
+- True Strength Index (TSI) - Double-smoothed momentum
+- Supertrend - Advanced trend following
+- Bollinger %B - Normalized band position
+- Volume estimation for when data unavailable
+
+### 3. **NewStrategies.cs** (20KB)
+7 new trading strategies:
+- Supertrend Strategy (trend following)
+- Mean Reversion with MFI (volume-confirmed reversals)
+- Triple Momentum Strategy (ROC + TSI + Force Index)
+- Support/Resistance Bounce (level-based reversals)
+- Gap Trading Strategy (fade the gap)
+- CMF Momentum Strategy (accumulation/distribution)
+- Force Index Breakout (volume-confirmed breakouts)
+
+### 6. **SimplifiedQualityScore.cs** (12KB)
+Improved quality scoring:
+- 4-factor system (vs original 7-factor)
+- More lenient thresholds
+- 35% minimum guarantee (vs original strict filtering)
+- Detailed breakdown option
+- 

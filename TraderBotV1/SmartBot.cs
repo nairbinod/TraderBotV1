@@ -66,7 +66,7 @@ namespace TraderBotV1
 				}
 			}
 
-			await _engine.SendSessionNotificationsAsync("nairbinod@gmail.com");
+			await _engine.SendSessionNotificationsAsync(_cfg.NotificationEmail);
 			// Print summary
 			PrintSummary(results);
 

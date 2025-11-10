@@ -17,11 +17,11 @@ namespace TraderBotV1
 		private readonly List<TradingSignal> _sessionSignals;
 
 		// ⚖️ IMPROVED THRESHOLDS - More balanced signal generation
-		private const int MIN_VOTES_REQUIRED = 3;              // ⭐ REDUCED: Need only 2 strategies (was 3)
+		private const int MIN_VOTES_REQUIRED = 4;              // ⭐ REDUCED: Need only 2 strategies (was 3)
 		private const decimal MIN_STRATEGY_CONFIDENCE = 0.45m; // ⭐ REDUCED: 35% to count as a vote (was 45%)
 		private const decimal MIN_FINAL_CONFIDENCE = 0.48m;    // ⭐ REDUCED: 40% for final decision (was 48%)
-		private const decimal MIN_QUALITY_SCORE = 0.30m;       // ⭐ REDUCED: 20% quality threshold (was 30%)
-		private const int MIN_STRATEGIES_FOR_ENTRY = 3;        // Need 2 strategies minimum (was 3)
+		private const decimal MIN_QUALITY_SCORE = 0.50m;       // ⭐ REDUCED: 20% quality threshold (was 30%)
+		private const int MIN_STRATEGIES_FOR_ENTRY = 4;        // Need 2 strategies minimum (was 3)
 
 		public TradeEngineEnhanced(SqliteStorage db, decimal riskPercent = 0.01m,
 			EmailNotificationService? emailService = null)
@@ -47,6 +47,11 @@ namespace TraderBotV1
 				return;
 			}
 
+			if (volumes == null || volumes.Count == 0)
+			{
+				Console.WriteLine("   ⚠️ No volume data - using estimation");
+				volumes = Indicators.EstimateVolume(closes, highs, lows);
+			}
 			// Create opens if not provided
 			if (opens == null || opens.Count != closes.Count)
 			{
@@ -129,7 +134,40 @@ namespace TraderBotV1
 			var s13 = Strategies.IchimokuCloud(closes, highs, lows);
 			var s14 = Strategies.PriceActionTrend(closes, highs, lows);
 
-			var allSignals = new[] { s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14 };
+			// New Enhanced Strategies
+			var s15 = volumes != null ?
+				Strategies.SupertrendStrategy(highs, lows, closes, 10, 3m) :
+				Hold("No data");
+
+			var s16 = volumes != null ?
+				Strategies.MeanReversionMFI(closes, highs, lows, volumes, 14, 20) :
+				Hold("No volume");
+
+			var s17 = volumes != null ?
+				Strategies.TripleMomentumStrategy(closes, highs, lows, volumes, 12) :
+				Hold("No volume");
+
+			var s18 = volumes != null ?
+				Strategies.SupportResistanceBounce(closes, highs, lows, volumes) :
+				Hold("No volume");
+
+			var s19 = volumes != null && opens != null ?
+				Strategies.GapTradingStrategy(opens, closes, highs, lows, volumes, 0.005m) :
+				Hold("No data");
+
+			var s20 = volumes != null ?
+				Strategies.CMFMomentumStrategy(closes, highs, lows, volumes, 20) :
+				Hold("No volume");
+
+			var s21 = volumes != null ?
+				Strategies.ForceIndexBreakout(closes, volumes, 13) :
+				Hold("No volume");
+
+			// Update allSignals array
+			var allSignals = new[] {
+										s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14,
+										s15, s16, s17, s18, s19, s20, s21  // Add new strategies
+									};
 
 			// ═══════════════════════════════════════════════════════════════
 			// STEP 5: VOTE COUNTING WITH WEIGHTED CONFIDENCE
@@ -193,10 +231,24 @@ namespace TraderBotV1
 				preliminaryDirection = "Sell";
 
 			decimal qualityScore = 0m;
+			decimal qualityScoreSimple  = 0m;
 			if (preliminaryDirection != "Hold")
 			{
 				qualityScore = Strategies.CalculateTradeQualityScore(
 					opens, closes, highs, lows, volumes ?? new List<decimal>(), preliminaryDirection);
+
+				//qualityScoreSimple = SimplifiedQualityScore.Calculate(
+				//	opens, closes, highs, lows, volumes ?? new List<decimal>(), preliminaryDirection);
+
+				//if (qualityScoreSimple > qualityScore)
+				//{
+				//	qualityScore = qualityScoreSimple;
+				//}
+				//// For detailed breakdown:
+				//var (score, breakdown) = SimplifiedQualityScore.CalculateWithDetails(
+				//	opens, closes, highs, lows, volumes ?? new List<decimal>(), preliminaryDirection);
+
+				//Console.WriteLine($"   Quality Breakdown: {breakdown}");
 
 				Console.WriteLine($"   Trade Quality Score: {qualityScore:P0}");
 			}
@@ -333,14 +385,14 @@ namespace TraderBotV1
 			}
 
 			// Position sizing based on quality score
-			decimal equity = 100000m;
+			decimal equity = 10000m;
 			decimal riskValue = equity * _riskPercent;
 
 			// ⭐ IMPROVED: Less aggressive quality adjustment
 			decimal adjustedRisk = riskValue * Math.Max(qualityScore * 1.3m, 0.7m);  // 70-130% of base risk
 			decimal qty = Math.Max(1, Math.Floor(adjustedRisk / stopDistance));
 
-			qty = 10;
+			//qty = 10;
 
 			// ═══════════════════════════════════════════════════════════════
 			// STEP 9: STORE SIGNAL & LOG
@@ -358,7 +410,8 @@ namespace TraderBotV1
 					StopDistance = stopDistance,
 					ConfirmedStrategies = finalSignal == "Buy" ? buyVotes : sellVotes,
 					Reason = finalReason,
-					Timestamp = DateTime.UtcNow
+					Timestamp = DateTime.Now,
+					LastBarDate = lastBarDate
 				});
 			}
 
@@ -369,7 +422,10 @@ namespace TraderBotV1
 				{ "MomentumDiv", s4 }, { "EMA+RSI", s5 }, { "Bollinger", s6 },
 				{ "ATR", s7 }, { "MACD", s8 }, { "ADX", s9 }, { "Volume", s10 },
 				{ "Donchian", s11 }, { "VWAP", s12 }, { "Ichimoku", s13 },
-				{ "PriceAction", s14 }
+				{ "PriceAction", s14 },
+				{ "Supertrend", s15 }, { "MeanRevMFI", s16 }, { "TripleMomentum", s17 },
+				{ "SRBounce", s18 }, { "GapTrading", s19 }, { "CMFMomentum", s20 },
+				{ "ForceIndex", s21 }
 			});
 
 			_db.InsertSignal(symbol, DateTime.UtcNow, "Enhanced_Consensus", finalSignal,

@@ -2083,5 +2083,578 @@ namespace TraderBotV1
 			return sar;
 		}
 
+		/// <summary> 11/8/2025
+		/// NEW STRATEGIES - Enhanced trading strategies using new indicators
+		/// Add these to your existing Strategies.cs or use as a separate file
+		/// </summary>
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 1: SUPERTREND STRATEGY
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Supertrend Strategy - Strong trend-following with clear signals
+		/// Generates signals on Supertrend direction flips
+		/// </summary>
+		public static StrategySignal SupertrendStrategy(
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> closes,
+			int period = 10,
+			decimal multiplier = 3m)
+		{
+			if (closes.Count < period + 10)
+				return Hold("insufficient data");
+
+			var (supertrend, direction) = Indicators.SupertrendList(
+				highs, lows, closes, period, multiplier);
+
+			if (direction.Count == 0)
+				return Hold("Supertrend not ready");
+
+			int idx = closes.Count - 1;
+			int prevIdx = idx - 1;
+
+			// Check for direction change (signal)
+			if (direction[idx] == 1 && direction[prevIdx] == -1)
+			{
+				// Bullish flip
+				var context = SignalValidator.AnalyzeMarketContext(closes, highs, lows, idx);
+
+				decimal strength = 0.65m;
+				if (context.IsUptrend)
+					strength += 0.15m;
+
+				// Volume confirmation bonus
+				decimal priceChange = closes[idx] - closes[idx - 1];
+				if (priceChange > 0)
+					strength += 0.05m;
+
+				return new("Buy", Clamp01(strength),
+					$"Supertrend bullish flip (${closes[idx]:F2} > ${supertrend[idx]:F2})");
+			}
+
+			if (direction[idx] == -1 && direction[prevIdx] == 1)
+			{
+				// Bearish flip
+				var context = SignalValidator.AnalyzeMarketContext(closes, highs, lows, idx);
+
+				decimal strength = 0.65m;
+				if (context.IsDowntrend)
+					strength += 0.15m;
+
+				decimal priceChange = closes[idx] - closes[idx - 1];
+				if (priceChange < 0)
+					strength += 0.05m;
+
+				return new("Sell", Clamp01(strength),
+					$"Supertrend bearish flip (${closes[idx]:F2} < ${supertrend[idx]:F2})");
+			}
+
+			return Hold("No Supertrend signal");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 2: MEAN REVERSION WITH MFI
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Mean Reversion with MFI - Uses volume-weighted momentum
+		/// Combines MFI oversold/overbought with Bollinger Band position
+		/// </summary>
+		public static StrategySignal MeanReversionMFI(
+			List<decimal> closes,
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> volumes,
+			int mfiPeriod = 14,
+			int bbPeriod = 20)
+		{
+			if (closes.Count < mfiPeriod + 20 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			var mfi = Indicators.MFIList(highs, lows, closes, volumes, mfiPeriod);
+			if (mfi.Count == 0)
+				return Hold("MFI not ready");
+
+			var (bbUpper, bbMiddle, bbLower) = Indicators.BollingerBandsFast(closes, bbPeriod, 2);
+
+			int idx = closes.Count - 1;
+			int mfiIdx = mfi.Count - 1;
+
+			if (bbUpper[idx] == null || bbLower[idx] == null)
+				return Hold("Bollinger Bands not ready");
+
+			decimal currentMFI = mfi[mfiIdx];
+			decimal prevMFI = mfi[mfiIdx - 1];
+			decimal price = closes[idx];
+
+			// Calculate band position
+			decimal bandWidth = bbUpper[idx].Value - bbLower[idx].Value;
+			if (bandWidth == 0)
+				return Hold("Invalid band width");
+
+			decimal bandPosition = (price - bbLower[idx].Value) / bandWidth;
+
+			// Check market context
+			var context = SignalValidator.AnalyzeMarketContext(closes, highs, lows, idx);
+
+			// BUY: Oversold MFI + near lower band + turning up
+			if (currentMFI < 30m && bandPosition < 0.40m && currentMFI > prevMFI)
+			{
+				// Avoid very strong downtrends
+				if (context.IsDowntrend && context.TrendStrength > 0.03m)
+					return Hold("Strong downtrend - avoid catching falling knife");
+
+				decimal strength = 0.50m;
+				strength += (30m - currentMFI) / 30m * 0.20m;  // MFI depth bonus
+				strength += (0.40m - bandPosition) * 0.15m;    // Band position bonus
+
+				// Additional confirmation from momentum
+				if (closes[idx] > closes[idx - 1])
+					strength += 0.10m;
+
+				return new("Buy", Clamp01(strength),
+					$"MFI oversold reversal (MFI={currentMFI:F1}, band={bandPosition:P0})");
+			}
+
+			// SELL: Overbought MFI + near upper band + turning down
+			if (currentMFI > 70m && bandPosition > 0.60m && currentMFI < prevMFI)
+			{
+				// Avoid very strong uptrends
+				if (context.IsUptrend && context.TrendStrength > 0.03m)
+					return Hold("Strong uptrend - avoid selling strength");
+
+				decimal strength = 0.50m;
+				strength += (currentMFI - 70m) / 30m * 0.20m;
+				strength += (bandPosition - 0.60m) * 0.15m;
+
+				if (closes[idx] < closes[idx - 1])
+					strength += 0.10m;
+
+				return new("Sell", Clamp01(strength),
+					$"MFI overbought reversal (MFI={currentMFI:F1}, band={bandPosition:P0})");
+			}
+
+			return Hold("No MFI mean reversion setup");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 3: TRIPLE MOMENTUM CONFIRMATION
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Triple Momentum - Combines ROC, TSI, and Force Index
+		/// Requires 2 of 3 indicators to agree for signal
+		/// </summary>
+		public static StrategySignal TripleMomentumStrategy(
+			List<decimal> closes,
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> volumes,
+			int rocPeriod = 12)
+		{
+			if (closes.Count < 50 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			var roc = Indicators.ROCList(closes, rocPeriod);
+			var (tsi, tsiSignal) = Indicators.TSIList(closes, 25, 13, 7);
+			var forceIndex = Indicators.ForceIndexList(closes, volumes, 13);
+
+			if (roc.Count == 0 || tsi.Count == 0 || forceIndex.Count == 0)
+				return Hold("indicators not ready");
+
+			int idx = closes.Count - 1;
+			int rocIdx = roc.Count - 1;
+			int tsiIdx = tsi.Count - 1;
+			int forceIdx = forceIndex.Count - 1;
+
+			if (rocIdx < 1 || tsiIdx < 1 || forceIdx < 1)
+				return Hold("insufficient indicator history");
+
+			decimal currentROC = roc[rocIdx];
+			decimal prevROC = roc[rocIdx - 1];
+			decimal currentTSI = tsi[tsiIdx];
+			decimal currentForce = forceIndex[forceIdx];
+			decimal prevForce = forceIndex[forceIdx - 1];
+
+			int bullishCount = 0;
+			int bearishCount = 0;
+			decimal bullishStrength = 0m;
+			decimal bearishStrength = 0m;
+
+			// ROC analysis
+			if (currentROC > 0 && currentROC > prevROC)
+			{
+				bullishCount++;
+				bullishStrength += Math.Min(Math.Abs(currentROC) / 5m, 0.25m);
+			}
+			else if (currentROC < 0 && currentROC < prevROC)
+			{
+				bearishCount++;
+				bearishStrength += Math.Min(Math.Abs(currentROC) / 5m, 0.25m);
+			}
+
+			// TSI analysis
+			if (tsiSignal.Count > 0)
+			{
+				decimal currentSignal = tsiSignal[^1];
+				if (currentTSI > currentSignal && currentTSI > 0)
+				{
+					bullishCount++;
+					bullishStrength += Math.Min(Math.Abs(currentTSI) / 20m, 0.25m);
+				}
+				else if (currentTSI < currentSignal && currentTSI < 0)
+				{
+					bearishCount++;
+					bearishStrength += Math.Min(Math.Abs(currentTSI) / 20m, 0.25m);
+				}
+			}
+
+			// Force Index analysis
+			if (currentForce > 0 && currentForce > prevForce)
+			{
+				bullishCount++;
+				bullishStrength += 0.20m;
+			}
+			else if (currentForce < 0 && currentForce < prevForce)
+			{
+				bearishCount++;
+				bearishStrength += 0.20m;
+			}
+
+			// Require at least 2 of 3 indicators
+			if (bullishCount >= 2)
+			{
+				decimal strength = 0.45m + bullishStrength;
+				return new("Buy", Clamp01(strength),
+					$"Triple momentum bullish ({bullishCount}/3 indicators)");
+			}
+
+			if (bearishCount >= 2)
+			{
+				decimal strength = 0.45m + bearishStrength;
+				return new("Sell", Clamp01(strength),
+					$"Triple momentum bearish ({bearishCount}/3 indicators)");
+			}
+
+			return Hold("Insufficient momentum consensus");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 4: SUPPORT/RESISTANCE BOUNCE
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Support/Resistance Bounce - Catches reversals at key levels
+		/// Uses volume confirmation and price action
+		/// </summary>
+		public static StrategySignal SupportResistanceBounce(
+			List<decimal> closes,
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> volumes)
+		{
+			if (closes.Count < 50 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			int idx = closes.Count - 1;
+			var srLevels = Indicators.FindSupportResistance(highs, lows, closes);
+
+			if (srLevels.Count == 0)
+				return Hold("No S/R levels found");
+
+			decimal currentPrice = closes[idx];
+			decimal prevPrice = closes[idx - 1];
+			decimal priceChange = currentPrice - prevPrice;
+			decimal percentChange = priceChange / prevPrice;
+
+			// Check volume spike
+			var recentVolumes = volumes.Skip(Math.Max(0, idx - 20)).Take(20).ToList();
+			decimal avgVolume = recentVolumes.Average();
+			decimal volumeRatio = volumes[idx] / Math.Max(avgVolume, 1m);
+
+			// Require meaningful volume
+			if (volumeRatio < 1.15m)
+				return Hold("Insufficient volume for S/R bounce");
+
+			// Find nearby support (for buy signals)
+			var nearbySupport = srLevels
+				.Where(l => l.IsSupport && l.Level < currentPrice && l.Level > currentPrice * 0.97m)
+				.OrderByDescending(l => l.Level)
+				.FirstOrDefault();
+
+			if (nearbySupport != null)
+			{
+				decimal distanceToSupport = (currentPrice - nearbySupport.Level) / currentPrice;
+
+				// BUY: Price bouncing off support with volume
+				if (distanceToSupport < 0.012m &&  // Within 1.2% of support
+					percentChange > 0 &&           // Bouncing up
+					volumeRatio > 1.15m)           // Volume confirmation
+				{
+					decimal strength = 0.50m;
+					strength += (nearbySupport.Strength / 10m) * 0.15m;  // S/R strength bonus
+					strength += Math.Min((volumeRatio - 1.15m) / 2m, 0.20m);  // Volume bonus
+
+					// Bonus for strong bounce
+					if (percentChange > 0.01m)
+						strength += 0.10m;
+
+					return new("Buy", Clamp01(strength),
+						$"Support bounce @ ${nearbySupport.Level:F2} (vol={volumeRatio:F2}x)");
+				}
+			}
+
+			// Find nearby resistance (for sell signals)
+			var nearbyResistance = srLevels
+				.Where(l => !l.IsSupport && l.Level > currentPrice && l.Level < currentPrice * 1.03m)
+				.OrderBy(l => l.Level)
+				.FirstOrDefault();
+
+			if (nearbyResistance != null)
+			{
+				decimal distanceToResistance = (nearbyResistance.Level - currentPrice) / currentPrice;
+
+				// SELL: Price rejecting resistance with volume
+				if (distanceToResistance < 0.012m &&
+					percentChange < 0 &&
+					volumeRatio > 1.15m)
+				{
+					decimal strength = 0.50m;
+					strength += (nearbyResistance.Strength / 10m) * 0.15m;
+					strength += Math.Min((volumeRatio - 1.15m) / 2m, 0.20m);
+
+					if (percentChange < -0.01m)
+						strength += 0.10m;
+
+					return new("Sell", Clamp01(strength),
+						$"Resistance rejection @ ${nearbyResistance.Level:F2} (vol={volumeRatio:F2}x)");
+				}
+			}
+
+			return Hold("No S/R bounce setup");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 5: GAP TRADING (FADE THE GAP)
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Gap Trading - Mean reversion on significant price gaps
+		/// Works best on daily timeframe
+		/// </summary>
+		public static StrategySignal GapTradingStrategy(
+			List<decimal> opens,
+			List<decimal> closes,
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> volumes,
+			decimal minGapPercent = 0.005m)  // 0.5% minimum gap
+		{
+			if (closes.Count < 30 || opens.Count != closes.Count || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			int idx = closes.Count - 1;
+
+			// Calculate gap
+			decimal prevClose = closes[idx - 1];
+			decimal currentOpen = opens[idx];
+			decimal currentPrice = closes[idx];
+			decimal gapSize = (currentOpen - prevClose) / prevClose;
+
+			// Only trade significant gaps
+			if (Math.Abs(gapSize) < minGapPercent)
+				return Hold($"Gap too small: {gapSize:P2}");
+
+			// Check how much of gap has been filled
+			decimal gapFilled = 0m;
+
+			if (gapSize > 0)  // Gap up
+			{
+				// How much has price moved back toward prev close
+				if (currentOpen > prevClose)
+					gapFilled = (currentOpen - currentPrice) / (currentOpen - prevClose);
+
+				// SELL: Gap up being filled (fade the gap)
+				if (currentPrice < currentOpen && gapFilled > 0.25m)
+				{
+					decimal strength = 0.45m;
+					strength += Math.Min(gapSize * 8m, 0.20m);      // Gap size bonus
+					strength += Math.Min(gapFilled * 0.25m, 0.15m); // Fill progress bonus
+
+					// Volume confirmation
+					var recentVols = volumes.Skip(Math.Max(0, idx - 10)).Take(10).ToList();
+					decimal avgVol = recentVols.Average();
+					if (volumes[idx] > avgVol * 1.2m)
+						strength += 0.10m;
+
+					return new("Sell", Clamp01(strength),
+						$"Gap fade ↓ (gap={gapSize:P2}, filled={gapFilled:P0})");
+				}
+			}
+			else  // Gap down
+			{
+				// How much has price moved back up toward prev close
+				if (currentOpen < prevClose)
+					gapFilled = (currentPrice - currentOpen) / (prevClose - currentOpen);
+
+				// BUY: Gap down being filled (fade the gap)
+				if (currentPrice > currentOpen && gapFilled > 0.25m)
+				{
+					decimal strength = 0.45m;
+					strength += Math.Min(Math.Abs(gapSize) * 8m, 0.20m);
+					strength += Math.Min(gapFilled * 0.25m, 0.15m);
+
+					var recentVols = volumes.Skip(Math.Max(0, idx - 10)).Take(10).ToList();
+					decimal avgVol = recentVols.Average();
+					if (volumes[idx] > avgVol * 1.2m)
+						strength += 0.10m;
+
+					return new("Buy", Clamp01(strength),
+						$"Gap fade ↑ (gap={gapSize:P2}, filled={gapFilled:P0})");
+				}
+			}
+
+			return Hold("Gap not suitable for fade trade");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 6: CMF MOMENTUM STRATEGY
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Chaikin Money Flow Momentum - Volume-weighted accumulation/distribution
+		/// Strong signals when CMF confirms price direction
+		/// </summary>
+		public static StrategySignal CMFMomentumStrategy(
+			List<decimal> closes,
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> volumes,
+			int period = 20)
+		{
+			if (closes.Count < period + 20 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			var cmf = Indicators.CMFList(highs, lows, closes, volumes, period);
+			if (cmf.Count == 0)
+				return Hold("CMF not ready");
+
+			int idx = closes.Count - 1;
+			int cmfIdx = cmf.Count - 1;
+
+			if (cmfIdx < 2)
+				return Hold("insufficient CMF history");
+
+			decimal currentCMF = cmf[cmfIdx];
+			decimal prevCMF = cmf[cmfIdx - 1];
+			decimal prev2CMF = cmf[cmfIdx - 2];
+
+			// Check price momentum
+			var rsiList = Indicators.RSIList(closes, 14);
+			decimal rsi = rsiList.Count > 0 ? rsiList[^1] : 50m;
+
+			// BUY: Strong accumulation (positive CMF) and increasing
+			if (currentCMF > 0.05m && currentCMF > prevCMF && prevCMF > prev2CMF)
+			{
+				decimal strength = 0.50m;
+				strength += Math.Min(currentCMF * 2.5m, 0.25m);  // CMF strength bonus
+
+				// RSI confirmation
+				if (rsi < 70m && rsi > 40m)
+					strength += 0.15m;
+
+				return new("Buy", Clamp01(strength),
+					$"CMF accumulation (CMF={currentCMF:F3}, RSI={rsi:F0})");
+			}
+
+			// SELL: Strong distribution (negative CMF) and decreasing
+			if (currentCMF < -0.05m && currentCMF < prevCMF && prevCMF < prev2CMF)
+			{
+				decimal strength = 0.50m;
+				strength += Math.Min(Math.Abs(currentCMF) * 2.5m, 0.25m);
+
+				if (rsi > 30m && rsi < 60m)
+					strength += 0.15m;
+
+				return new("Sell", Clamp01(strength),
+					$"CMF distribution (CMF={currentCMF:F3}, RSI={rsi:F0})");
+			}
+
+			return Hold("No CMF momentum signal");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 7: FORCE INDEX BREAKOUT
+		// ══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Force Index Breakout - Combines price and volume for momentum
+		/// Elder's Force Index measures the strength behind moves
+		/// </summary>
+		public static StrategySignal ForceIndexBreakout(
+			List<decimal> closes,
+			List<decimal> volumes,
+			int period = 13)
+		{
+			if (closes.Count < period + 20 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			var forceIndex = Indicators.ForceIndexList(closes, volumes, period);
+			if (forceIndex.Count == 0)
+				return Hold("Force Index not ready");
+
+			int idx = closes.Count - 1;
+			int fiIdx = forceIndex.Count - 1;
+
+			if (fiIdx < 3)
+				return Hold("insufficient Force Index history");
+
+			decimal currentFI = forceIndex[fiIdx];
+			decimal prevFI = forceIndex[fiIdx - 1];
+			decimal prev2FI = forceIndex[fiIdx - 2];
+
+			// Calculate Force Index momentum
+			bool increasingBullish = currentFI > prevFI && prevFI > prev2FI && currentFI > 0;
+			bool increasingBearish = currentFI < prevFI && prevFI < prev2FI && currentFI < 0;
+
+			// BUY: Force Index turning strongly positive
+			if (increasingBullish)
+			{
+				// Check for zero-line cross or strong momentum
+				bool crossedZero = prevFI <= 0 && currentFI > 0;
+				bool strongMomentum = currentFI > prevFI * 1.3m;
+
+				if (crossedZero || strongMomentum)
+				{
+					decimal strength = 0.55m;
+					if (crossedZero) strength += 0.15m;
+					if (strongMomentum) strength += 0.10m;
+
+					return new("Buy", Clamp01(strength),
+						$"Force Index bullish momentum (FI={currentFI:F0})");
+				}
+			}
+
+			// SELL: Force Index turning strongly negative
+			if (increasingBearish)
+			{
+				bool crossedZero = prevFI >= 0 && currentFI < 0;
+				bool strongMomentum = currentFI < prevFI * 1.3m;
+
+				if (crossedZero || strongMomentum)
+				{
+					decimal strength = 0.55m;
+					if (crossedZero) strength += 0.15m;
+					if (strongMomentum) strength += 0.10m;
+
+					return new("Sell", Clamp01(strength),
+						$"Force Index bearish momentum (FI={currentFI:F0})");
+				}
+			}
+
+			return Hold("No Force Index breakout");
+		}
 	}
 }
