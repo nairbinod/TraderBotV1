@@ -197,7 +197,9 @@ namespace TraderBotV1
         .signal-table td { padding: 12px; border-bottom: 1px solid #e0e0e0; }
         .signal-table tbody tr:hover { background-color: #f8f9fa; }
         .signal-table tbody tr:last-child td { border-bottom: none; }
-        .symbol { font-weight: bold; color: #28a745; font-size: 16px; }
+        .symbol { font-weight: bold; font-size: 16px; }
+        .symbol a { color: #28a745; text-decoration: none; }
+        .symbol a:hover { text-decoration: underline; color: #20c997; }
         .confidence { background-color: #28a745; color: white; padding: 4px 10px; border-radius: 15px; font-size: 12px; font-weight: bold; display: inline-block; }
         .footer { margin-top: 30px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; color: #888; font-size: 12px; }
         .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px; border-radius: 5px; }
@@ -230,13 +232,15 @@ namespace TraderBotV1
 
 			foreach (var signal in signals)
 			{
+				TimeZoneInfo cstZone = TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time");
+				string googleFinanceUrl = $"https://finviz.com/quote.ashx?t={signal.Symbol}&p=d";
 				sb.AppendLine($@"
                 <tr>
-                    <td class='symbol'>{signal.Symbol}</td>
+                    <td class='symbol'><a href='{googleFinanceUrl}' target='_blank'>{signal.Symbol}</a></td>
                     <td>${signal.EntryPrice:F2}</td>
                     <td><span class='confidence'>{signal.Confidence:P0}</span></td>
                     <td>${signal.StopDistance:F2}</td>
-                    <td>{signal.LastBarDate:MM/dd/yyyy}</td>
+                    <td>{TimeZoneInfo.ConvertTimeFromUtc(signal.LastBarDate, cstZone):MM/dd/yyyy HH:mm}</td>
                     <td>{signal.ConfirmedStrategies}</td>
                     <td>{signal.Reason}</td>
                 </tr>");
@@ -290,6 +294,12 @@ namespace TraderBotV1
 			}
 
 			sb.AppendLine("───────────────────────────────────────────────────────────────────────────────────");
+			sb.AppendLine();
+			sb.AppendLine("Google Finance Links:");
+			foreach (var signal in signals)
+			{
+				sb.AppendLine($"  {signal.Symbol}: https://www.google.com/finance/quote/{signal.Symbol}:NASDAQ");
+			}
 			sb.AppendLine();
 			sb.AppendLine("⚠️ DISCLAIMER:");
 			sb.AppendLine("This is an automated trading signal. Always verify signals manually before executing");

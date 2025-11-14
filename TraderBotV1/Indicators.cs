@@ -1363,11 +1363,444 @@ namespace TraderBotV1
 
 			return validation;
 		}
+
+		// ──────────────────────────────────────────────────────────
+		// 1. WILLIAMS %R - Momentum indicator (similar to Stochastic)
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// Williams %R indicator - Shows overbought/oversold conditions
+		/// Values range from 0 to -100 (inverted compared to Stochastic)
+		/// </summary>
+		public static List<decimal> WilliamsR(List<decimal> highs, List<decimal> lows,
+			List<decimal> closes, int period = 14)
+		{
+			var result = new List<decimal>();
+			if (closes.Count < period) return result;
+
+			for (int i = period - 1; i < closes.Count; i++)
+			{
+				var periodHighs = highs.Skip(i - period + 1).Take(period).ToList();
+				var periodLows = lows.Skip(i - period + 1).Take(period).ToList();
+
+				decimal highestHigh = periodHighs.Max();
+				decimal lowestLow = periodLows.Min();
+				decimal close = closes[i];
+
+				decimal denom = Math.Max(highestHigh - lowestLow, 1e-8m);
+				decimal williamsR = -100m * (highestHigh - close) / denom;
+
+				result.Add(Math.Round(williamsR, 2));
+			}
+
+			return result;
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 2. PARABOLIC SAR - Trend following indicator
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// Parabolic SAR - Stop and Reverse indicator for trend following
+		/// Returns list of SAR values and trend direction
+		/// </summary>
+		public static (List<decimal> sar, List<bool> isBullish) ParabolicSAR(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes,
+			decimal acceleration = 0.02m, decimal maxAcceleration = 0.2m)
+		{
+			var sar = new List<decimal>();
+			var isBullish = new List<bool>();
+
+			if (closes.Count < 5) return (sar, isBullish);
+
+			// Initialize
+			bool bull = closes[1] > closes[0];
+			decimal af = acceleration;
+			decimal ep = bull ? highs.Take(2).Max() : lows.Take(2).Min();
+			decimal currentSar = bull ? lows.Take(2).Min() : highs.Take(2).Max();
+
+			sar.Add(currentSar);
+			isBullish.Add(bull);
+
+			for (int i = 1; i < closes.Count; i++)
+			{
+				// Calculate new SAR
+				decimal newSar = currentSar + af * (ep - currentSar);
+
+				// Check for reversal
+				bool reversal = false;
+				if (bull)
+				{
+					newSar = Math.Min(newSar, lows[i - 1]);
+					if (i > 1) newSar = Math.Min(newSar, lows[i - 2]);
+
+					if (lows[i] < newSar)
+					{
+						reversal = true;
+						bull = false;
+						newSar = ep;
+						ep = lows[i];
+						af = acceleration;
+					}
+					else
+					{
+						if (highs[i] > ep)
+						{
+							ep = highs[i];
+							af = Math.Min(af + acceleration, maxAcceleration);
+						}
+					}
+				}
+				else
+				{
+					newSar = Math.Max(newSar, highs[i - 1]);
+					if (i > 1) newSar = Math.Max(newSar, highs[i - 2]);
+
+					if (highs[i] > newSar)
+					{
+						reversal = true;
+						bull = true;
+						newSar = ep;
+						ep = highs[i];
+						af = acceleration;
+					}
+					else
+					{
+						if (lows[i] < ep)
+						{
+							ep = lows[i];
+							af = Math.Min(af + acceleration, maxAcceleration);
+						}
+					}
+				}
+
+				currentSar = newSar;
+				sar.Add(Math.Round(currentSar, 4));
+				isBullish.Add(bull);
+			}
+
+			return (sar, isBullish);
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 3. KELTNER CHANNELS - Volatility-based channels
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// Keltner Channels - ATR-based volatility channels
+		/// Alternative to Bollinger Bands
+		/// </summary>
+		public static (List<decimal?> upper, List<decimal?> middle, List<decimal?> lower)
+			KeltnerChannels(List<decimal> highs, List<decimal> lows, List<decimal> closes,
+			int emaPeriod = 20, int atrPeriod = 10, decimal multiplier = 2m)
+		{
+			var upper = new List<decimal?>();
+			var middle = new List<decimal?>();
+			var lower = new List<decimal?>();
+
+			if (closes.Count < Math.Max(emaPeriod, atrPeriod))
+			{
+				return (Enumerable.Repeat<decimal?>(null, closes.Count).ToList(),
+						Enumerable.Repeat<decimal?>(null, closes.Count).ToList(),
+						Enumerable.Repeat<decimal?>(null, closes.Count).ToList());
+			}
+
+			var ema = Indicators.EMAList(closes, emaPeriod);
+			var atr = Indicators.ATRList(highs, lows, closes, atrPeriod);
+
+			for (int i = 0; i < closes.Count; i++)
+			{
+				if (i < Math.Max(emaPeriod, atrPeriod) || atr[i] == 0)
+				{
+					upper.Add(null);
+					middle.Add(null);
+					lower.Add(null);
+				}
+				else
+				{
+					decimal centerLine = ema[i];
+					decimal atrValue = atr[i];
+
+					middle.Add(Math.Round(centerLine, 4));
+					upper.Add(Math.Round(centerLine + multiplier * atrValue, 4));
+					lower.Add(Math.Round(centerLine - multiplier * atrValue, 4));
+				}
+			}
+
+			return (upper, middle, lower);
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 4. ON-BALANCE VOLUME (OBV) - Volume momentum
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// On-Balance Volume - Cumulative volume momentum indicator
+		/// Measures buying/selling pressure
+		/// </summary>
+		public static List<decimal> OBV(List<decimal> closes, List<decimal> volumes)
+		{
+			var obv = new List<decimal>();
+			if (closes.Count == 0 || volumes.Count != closes.Count) return obv;
+
+			decimal cumulativeOBV = 0m;
+			obv.Add(cumulativeOBV); // First value is 0
+
+			for (int i = 1; i < closes.Count; i++)
+			{
+				if (closes[i] > closes[i - 1])
+					cumulativeOBV += volumes[i];
+				else if (closes[i] < closes[i - 1])
+					cumulativeOBV -= volumes[i];
+				// If price unchanged, OBV stays same
+
+				obv.Add(Math.Round(cumulativeOBV, 2));
+			}
+
+			return obv;
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 5. AROON INDICATOR - Trend change detection
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// Aroon Indicator - Identifies trend changes and strength
+		/// Returns Aroon Up and Aroon Down
+		/// </summary>
+		public static (List<decimal> aroonUp, List<decimal> aroonDown, List<decimal> aroonOscillator)
+			AroonIndicator(List<decimal> highs, List<decimal> lows, int period = 25)
+		{
+			var aroonUp = new List<decimal>();
+			var aroonDown = new List<decimal>();
+			var aroonOsc = new List<decimal>();
+
+			if (highs.Count < period) return (aroonUp, aroonDown, aroonOsc);
+
+			for (int i = period - 1; i < highs.Count; i++)
+			{
+				var periodHighs = highs.Skip(i - period + 1).Take(period).ToList();
+				var periodLows = lows.Skip(i - period + 1).Take(period).ToList();
+
+				// Find days since highest high and lowest low
+				int daysSinceHigh = period - 1 - periodHighs.LastIndexOf(periodHighs.Max());
+				int daysSinceLow = period - 1 - periodLows.LastIndexOf(periodLows.Min());
+
+				decimal aroonUpValue = ((decimal)(period - daysSinceHigh) / period) * 100m;
+				decimal aroonDownValue = ((decimal)(period - daysSinceLow) / period) * 100m;
+
+				aroonUp.Add(Math.Round(aroonUpValue, 2));
+				aroonDown.Add(Math.Round(aroonDownValue, 2));
+				aroonOsc.Add(Math.Round(aroonUpValue - aroonDownValue, 2));
+			}
+
+			return (aroonUp, aroonDown, aroonOsc);
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 6. RATE OF CHANGE (ROC) - Momentum indicator
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// Rate of Change - Measures momentum as percentage change
+		/// </summary>
+		public static List<decimal> ROC(List<decimal> closes, int period = 12)
+		{
+			var roc = new List<decimal>();
+			if (closes.Count < period + 1) return roc;
+
+			for (int i = period; i < closes.Count; i++)
+			{
+				decimal previousClose = closes[i - period];
+				if (previousClose == 0) previousClose = 1e-8m;
+
+				decimal rocValue = ((closes[i] - previousClose) / previousClose) * 100m;
+				roc.Add(Math.Round(rocValue, 2));
+			}
+
+			return roc;
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 7. TRUE STRENGTH INDEX (TSI) - Double-smoothed momentum
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// True Strength Index - Double-smoothed momentum oscillator
+		/// More responsive than RSI, less noisy
+		/// </summary>
+		public static (List<decimal> tsi, List<decimal> signal) TSI(
+			List<decimal> closes, int longPeriod = 25, int shortPeriod = 13, int signalPeriod = 7)
+		{
+			var tsiValues = new List<decimal>();
+			var signalValues = new List<decimal>();
+
+			if (closes.Count < longPeriod + shortPeriod)
+				return (tsiValues, signalValues);
+
+			// Calculate price changes
+			var priceChanges = new List<decimal>();
+			for (int i = 1; i < closes.Count; i++)
+			{
+				priceChanges.Add(closes[i] - closes[i - 1]);
+			}
+
+			// Calculate absolute price changes
+			var absChanges = priceChanges.Select(Math.Abs).ToList();
+
+			// First EMA smoothing
+			var pcEma1 = Indicators.EMAList(priceChanges, longPeriod);
+			var absEma1 = Indicators.EMAList(absChanges, longPeriod);
+
+			// Second EMA smoothing
+			var pcEma2 = Indicators.EMAList(pcEma1, shortPeriod);
+			var absEma2 = Indicators.EMAList(absEma1, shortPeriod);
+
+			// Calculate TSI
+			for (int i = 0; i < pcEma2.Count; i++)
+			{
+				decimal denom = Math.Max(absEma2[i], 1e-8m);
+				decimal tsi = 100m * pcEma2[i] / denom;
+				tsiValues.Add(Math.Round(tsi, 2));
+			}
+
+			// Calculate signal line
+			if (tsiValues.Count >= signalPeriod)
+			{
+				signalValues = Indicators.EMAList(tsiValues, signalPeriod);
+			}
+
+			return (tsiValues, signalValues);
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 8. ULTIMATE OSCILLATOR - Multi-timeframe momentum
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// Ultimate Oscillator - Combines 3 different timeframes
+		/// Reduces false signals from single-period oscillators
+		/// </summary>
+		public static List<decimal> UltimateOscillator(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes,
+			int period1 = 7, int period2 = 14, int period3 = 28)
+		{
+			var result = new List<decimal>();
+			if (closes.Count < period3 + 1) return result;
+
+			// Calculate buying pressure and true range for each period
+			var bp = new List<decimal>();  // Buying Pressure
+			var tr = new List<decimal>();  // True Range
+
+			for (int i = 1; i < closes.Count; i++)
+			{
+				decimal close = closes[i];
+				decimal low = lows[i];
+				decimal prevClose = closes[i - 1];
+				decimal high = highs[i];
+
+				bp.Add(close - Math.Min(low, prevClose));
+				tr.Add(Math.Max(high, prevClose) - Math.Min(low, prevClose));
+			}
+
+			// Calculate averages for each period
+			for (int i = period3 - 1; i < bp.Count; i++)
+			{
+				decimal avg1 = bp.Skip(i - period1 + 1).Take(period1).Sum() /
+							   tr.Skip(i - period1 + 1).Take(period1).Sum();
+				decimal avg2 = bp.Skip(i - period2 + 1).Take(period2).Sum() /
+							   tr.Skip(i - period2 + 1).Take(period2).Sum();
+				decimal avg3 = bp.Skip(i - period3 + 1).Take(period3).Sum() /
+							   tr.Skip(i - period3 + 1).Take(period3).Sum();
+
+				// Weighted average (4:2:1 ratio)
+				decimal uo = 100m * ((4m * avg1) + (2m * avg2) + avg3) / 7m;
+				result.Add(Math.Round(uo, 2));
+			}
+
+			return result;
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 9. COMMODITY CHANNEL INDEX (CCI) - Enhanced version
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// Enhanced CCI calculation with better mean deviation
+		/// </summary>
+		public static List<decimal> CCIEnhanced(List<decimal> highs, List<decimal> lows,
+			List<decimal> closes, int period = 20)
+		{
+			var cci = new List<decimal>();
+			if (closes.Count < period) return cci;
+
+			// Calculate typical price
+			var typicalPrice = new List<decimal>();
+			for (int i = 0; i < closes.Count; i++)
+			{
+				typicalPrice.Add((highs[i] + lows[i] + closes[i]) / 3m);
+			}
+
+			for (int i = period - 1; i < typicalPrice.Count; i++)
+			{
+				var segment = typicalPrice.Skip(i - period + 1).Take(period).ToList();
+				decimal sma = segment.Average();
+
+				// Calculate mean deviation
+				decimal meanDev = segment.Select(x => Math.Abs(x - sma)).Average();
+
+				if (meanDev == 0) meanDev = 1e-8m;
+
+				decimal cciValue = (typicalPrice[i] - sma) / (0.015m * meanDev);
+				cci.Add(Math.Round(cciValue, 2));
+			}
+
+			return cci;
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// 10. VORTEX INDICATOR - Trend direction and strength
+		// ──────────────────────────────────────────────────────────
+		/// <summary>
+		/// Vortex Indicator - Identifies trend reversals and strength
+		/// </summary>
+		public static (List<decimal> viPlus, List<decimal> viMinus) VortexIndicator(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
+		{
+			var viPlus = new List<decimal>();
+			var viMinus = new List<decimal>();
+
+			if (closes.Count < period + 1) return (viPlus, viMinus);
+
+			for (int i = period; i < closes.Count; i++)
+			{
+				decimal sumVMPlus = 0m;
+				decimal sumVMMinus = 0m;
+				decimal sumTR = 0m;
+
+				for (int j = 0; j < period; j++)
+				{
+					int idx = i - period + j + 1;
+
+					// Vortex Movement
+					sumVMPlus += Math.Abs(highs[idx] - lows[idx - 1]);
+					sumVMMinus += Math.Abs(lows[idx] - highs[idx - 1]);
+
+					// True Range
+					decimal tr = Math.Max(
+						highs[idx] - lows[idx],
+						Math.Max(
+							Math.Abs(highs[idx] - closes[idx - 1]),
+							Math.Abs(lows[idx] - closes[idx - 1])
+						)
+					);
+					sumTR += tr;
+				}
+
+				decimal viPlusValue = sumTR > 0 ? sumVMPlus / sumTR : 0m;
+				decimal viMinusValue = sumTR > 0 ? sumVMMinus / sumTR : 0m;
+
+				viPlus.Add(Math.Round(viPlusValue, 4));
+				viMinus.Add(Math.Round(viMinusValue, 4));
+			}
+
+			return (viPlus, viMinus);
+		}
 	}
 
-	
-	
-	
+
+
 	// ═══════════════════════════════════════════════════════════════
 	// SIGNAL VALIDATION FRAMEWORK
 	// ═══════════════════════════════════════════════════════════════
@@ -1602,7 +2035,7 @@ namespace TraderBotV1
 
 			if (isBuy)
 			{
-				bool wasOversold = stochK.Skip(Math.Max(0, idx - 10)).Take(10).Any(k => k < 0.35m);  // ⚖️ MORE LENIENT: <0.30
+				bool wasOversold = stochK.Skip(Math.Max(0, idx - 10)).Take(10).Any(k => k < 0.40m);  // ⚖️ MORE LENIENT: <0.30
 				if (!wasOversold)
 					return validation.Fail("No oversold condition");
 
@@ -1618,7 +2051,7 @@ namespace TraderBotV1
 			}
 			else
 			{
-				bool wasOverbought = stochK.Skip(Math.Max(0, idx - 10)).Take(10).Any(k => k > 0.65m);  // ⚖️ MORE LENIENT: >0.70
+				bool wasOverbought = stochK.Skip(Math.Max(0, idx - 10)).Take(10).Any(k => k > 0.60m);  // ⚖️ MORE LENIENT: >0.70
 				if (!wasOverbought)
 					return validation.Fail("No overbought condition");
 
@@ -1679,7 +2112,7 @@ namespace TraderBotV1
 
 			if (isBuy)
 			{
-				if (!(cciPrev <= -70m && cciNow > -70m))  // ⚖️ MORE LENIENT: -70
+				if (!(cciPrev <= -60m && cciNow > -60m))  // ⚖️ MORE LENIENT: -70
 					return validation.Fail("No CCI oversold recovery (-80)");
 
 				bool momentum = cciNow > cciPrev && cci[idx - 1] > cci[idx - 2];
@@ -1690,7 +2123,7 @@ namespace TraderBotV1
 			}
 			else
 			{
-				if (!(cciPrev >= 70m && cciNow < 70m))  // ⚖️ MORE LENIENT: 70
+				if (!(cciPrev >= 60m && cciNow < 60m))  // ⚖️ MORE LENIENT: 70
 					return validation.Fail("No CCI overbought reversal (80)");
 
 				bool momentum = cciNow < cciPrev && cci[idx - 1] < cci[idx - 2];
@@ -1718,7 +2151,7 @@ namespace TraderBotV1
 			bool isBuy = direction == "Buy";
 
 			decimal vol = atr.Count > idx && price > 0 ? atr[idx] / price : 0m;
-			if (vol < 0.0015m)  // ⚖️ MORE LENIENT: 0.15% (lowered from 0.2%)
+			if (vol < 0.0012m)  // ⚖️ MORE LENIENT: 0.15% (lowered from 0.2%)
 				return validation.Fail($"Insufficient volatility: {vol:P2}");
 
 			if (isBuy)
@@ -1841,7 +2274,7 @@ namespace TraderBotV1
 			return Math.Min(conf, 1m);
 		}
 
-		
+
 
 	}
 }

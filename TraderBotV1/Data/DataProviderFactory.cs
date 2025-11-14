@@ -93,8 +93,8 @@ namespace TraderBotV1.Data
 				throw new ArgumentOutOfRangeException(nameof(daysHistory), "Must be positive");
 
 			// Calculate date range (exclude recent days to avoid partial data)
-			DateTime endDate = DateTime.Now.AddDays(-LOOKBACK_BUFFER_DAYS);
-			var end = endDate.AddHours(-1);//ToDateTime(new TimeOnly(16, 00, 00));
+			DateTime endDate = DateTime.UtcNow.AddDays(-LOOKBACK_BUFFER_DAYS);
+			var end = endDate.AddMinutes(-30);//ToDateTime(new TimeOnly(16, 00, 00));
 			
 			var start = end.AddDays(-daysHistory);
 

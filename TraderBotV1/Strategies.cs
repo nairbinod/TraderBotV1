@@ -2656,5 +2656,565 @@ namespace TraderBotV1
 
 			return Hold("No Force Index breakout");
 		}
+
+
+
+		/// <summary>
+		/// NEW STRATEGIES - Add these to your Strategies.cs file
+		/// </summary>
+
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 1: WILLIAMS %R REVERSAL
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// Williams %R Reversal Strategy - Catches oversold/overbought reversals
+		/// More sensitive than RSI for short-term reversals
+		/// </summary>
+		public static StrategySignal WilliamsRReversal(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes,
+			int period = 14)
+		{
+			if (closes.Count < period + 5) return Hold("insufficient data");
+
+			var willR = Indicators.WilliamsR(highs, lows, closes, period);
+			if (willR.Count < 5) return Hold("Williams %R not ready");
+
+			int idx = willR.Count - 1;
+			decimal current = willR[idx];
+			decimal prev = willR[idx - 1];
+			decimal prev2 = willR[idx - 2];
+
+			var rsiList = Indicators.RSIList(closes, 14);
+			decimal rsi = rsiList.Count > 0 ? rsiList[^1] : 50m;
+
+			// BUY: Oversold recovery
+			if (current > -80m && prev <= -80m && prev2 < -85m)
+			{
+				// Confirm momentum shift
+				bool priceRising = closes[^1] > closes[^2];
+
+				decimal strength = 0.55m;
+				if (priceRising) strength += 0.15m;
+				if (rsi > 30m && rsi < 55m) strength += 0.10m;
+
+				return new("Buy", Clamp01(strength),
+					$"Williams %R oversold recovery ({current:F1} from {prev:F1})");
+			}
+
+			// SELL: Overbought reversal
+			if (current < -20m && prev >= -20m && prev2 > -15m)
+			{
+				bool priceFalling = closes[^1] < closes[^2];
+
+				decimal strength = 0.55m;
+				if (priceFalling) strength += 0.15m;
+				if (rsi < 70m && rsi > 45m) strength += 0.10m;
+
+				return new("Sell", Clamp01(strength),
+					$"Williams %R overbought reversal ({current:F1} from {prev:F1})");
+			}
+
+			return Hold("No Williams %R reversal signal");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 2: PARABOLIC SAR TREND FOLLOWING
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// Parabolic SAR Trend Following - Follows strong trends with built-in stops
+		/// Excellent for trending markets
+		/// </summary>
+		public static StrategySignal ParabolicSARTrend(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes)
+		{
+			if (closes.Count < 30) return Hold("insufficient data");
+
+			var (sar, isBullish) = Indicators.ParabolicSAR(highs, lows, closes);
+			if (sar.Count < 5) return Hold("SAR not ready");
+
+			int idx = sar.Count - 1;
+			bool currentTrend = isBullish[idx];
+			bool prevTrend = isBullish[idx - 1];
+
+			// Check for trend flip
+			bool trendFlippedUp = currentTrend && !prevTrend;
+			bool trendFlippedDown = !currentTrend && prevTrend;
+
+			if (!trendFlippedUp && !trendFlippedDown)
+				return Hold("SAR no flip");
+
+			// Confirm with price action
+			decimal price = closes[^1];
+			decimal sarValue = sar[idx];
+			decimal gap = Math.Abs(price - sarValue) / price;
+
+			// Check trend consistency (at least 3 bars in previous direction)
+			int consecutiveBars = 0;
+			for (int i = idx - 1; i >= Math.Max(0, idx - 5); i--)
+			{
+				if (isBullish[i] == prevTrend)
+					consecutiveBars++;
+				else
+					break;
+			}
+
+			if (trendFlippedUp && consecutiveBars >= 2)
+			{
+				decimal strength = 0.60m;
+				strength += Math.Min(gap * 10m, 0.15m);  // Gap strength bonus
+				strength += Math.Min(consecutiveBars * 0.05m, 0.15m);
+
+				return new("Buy", Clamp01(strength),
+					$"PSAR flip up (gap={gap:P2}, prev={consecutiveBars} bars)");
+			}
+
+			if (trendFlippedDown && consecutiveBars >= 2)
+			{
+				decimal strength = 0.60m;
+				strength += Math.Min(gap * 10m, 0.15m);
+				strength += Math.Min(consecutiveBars * 0.05m, 0.15m);
+
+				return new("Sell", Clamp01(strength),
+					$"PSAR flip down (gap={gap:P2}, prev={consecutiveBars} bars)");
+			}
+
+			return Hold("SAR flip too weak");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 3: KELTNER CHANNEL BREAKOUT
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// Keltner Channel Breakout - ATR-based volatility breakouts
+		/// More reliable than Bollinger Bands in trending markets
+		/// </summary>
+		public static StrategySignal KeltnerChannelBreakout(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes,
+			List<decimal> volumes)
+		{
+			if (closes.Count < 30 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			var (upper, middle, lower) = Indicators.KeltnerChannels(
+				highs, lows, closes, 20, 10, 2m);
+
+			int idx = closes.Count - 1;
+			if (upper[idx] == null || lower[idx] == null)
+				return Hold("Keltner not ready");
+
+			decimal price = closes[idx];
+			decimal prevPrice = closes[idx - 1];
+			decimal ub = upper[idx].Value;
+			decimal lb = lower[idx].Value;
+			decimal mid = middle[idx].Value;
+
+			// Volume confirmation
+			var recentVols = volumes.Skip(Math.Max(0, idx - 20)).Take(20).ToList();
+			decimal avgVol = recentVols.Average();
+			decimal volRatio = volumes[idx] / Math.Max(avgVol, 1m);
+
+			// BUY: Breakout above upper band
+			if (price > ub && prevPrice <= upper[idx - 1])
+			{
+				bool volumeConfirm = volRatio > 1.2m;
+				bool momentum = closes[idx] > closes[idx - 2];
+
+				decimal strength = 0.55m;
+				if (volumeConfirm) strength += 0.20m;
+				if (momentum) strength += 0.10m;
+
+				return new("Buy", Clamp01(strength),
+					$"Keltner breakout ↑ (vol={volRatio:F2}x)");
+			}
+
+			// SELL: Breakdown below lower band
+			if (price < lb && prevPrice >= lower[idx - 1])
+			{
+				bool volumeConfirm = volRatio > 1.2m;
+				bool momentum = closes[idx] < closes[idx - 2];
+
+				decimal strength = 0.55m;
+				if (volumeConfirm) strength += 0.20m;
+				if (momentum) strength += 0.10m;
+
+				return new("Sell", Clamp01(strength),
+					$"Keltner breakdown ↓ (vol={volRatio:F2}x)");
+			}
+
+			return Hold("No Keltner breakout");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 4: OBV DIVERGENCE
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// OBV Divergence Strategy - Detects hidden buying/selling pressure
+		/// Early warning of trend reversals
+		/// </summary>
+		public static StrategySignal OBVDivergence(
+			List<decimal> closes, List<decimal> volumes, int lookback = 20)
+		{
+			if (closes.Count < lookback + 10 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			var obv = Indicators.OBV(closes, volumes);
+			if (obv.Count < lookback) return Hold("OBV not ready");
+
+			int idx = closes.Count - 1;
+
+			// Find recent highs/lows in price and OBV
+			var recentPrices = closes.Skip(idx - lookback).Take(lookback).ToList();
+			var recentOBV = obv.Skip(idx - lookback).Take(lookback).ToList();
+
+			// BUY: Bullish divergence (price lower low, OBV higher low)
+			int priceLowIdx = recentPrices.IndexOf(recentPrices.Min());
+			int obvLowIdx = recentOBV.IndexOf(recentOBV.Min());
+
+			if (priceLowIdx > 5 && priceLowIdx < lookback - 3)
+			{
+				bool bullishDiv = recentOBV[^1] > recentOBV[priceLowIdx] &&
+								  recentPrices[^1] < recentPrices[priceLowIdx] * 1.02m;
+
+				if (bullishDiv)
+				{
+					// Confirm with RSI
+					var rsi = Indicators.RSIList(closes, 14);
+					bool rsiSupport = rsi.Count > 0 && rsi[^1] > 35m && rsi[^1] < 60m;
+
+					decimal strength = 0.60m;
+					if (rsiSupport) strength += 0.15m;
+
+					return new("Buy", Clamp01(strength),
+						"OBV bullish divergence detected");
+				}
+			}
+
+			// SELL: Bearish divergence (price higher high, OBV lower high)
+			int priceHighIdx = recentPrices.IndexOf(recentPrices.Max());
+			int obvHighIdx = recentOBV.IndexOf(recentOBV.Max());
+
+			if (priceHighIdx > 5 && priceHighIdx < lookback - 3)
+			{
+				bool bearishDiv = recentOBV[^1] < recentOBV[priceHighIdx] &&
+								  recentPrices[^1] > recentPrices[priceHighIdx] * 0.98m;
+
+				if (bearishDiv)
+				{
+					var rsi = Indicators.RSIList(closes, 14);
+					bool rsiResistance = rsi.Count > 0 && rsi[^1] < 65m && rsi[^1] > 40m;
+
+					decimal strength = 0.60m;
+					if (rsiResistance) strength += 0.15m;
+
+					return new("Sell", Clamp01(strength),
+						"OBV bearish divergence detected");
+				}
+			}
+
+			return Hold("No OBV divergence");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 5: AROON TREND CHANGE
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// Aroon Trend Change Strategy - Catches early trend changes
+		/// High accuracy for identifying new trends
+		/// </summary>
+		public static StrategySignal AroonTrendChange(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 25)
+		{
+			if (closes.Count < period + 10) return Hold("insufficient data");
+
+			var (aroonUp, aroonDown, aroonOsc) = Indicators.AroonIndicator(
+				highs, lows, period);
+
+			if (aroonUp.Count < 5) return Hold("Aroon not ready");
+
+			int idx = aroonUp.Count - 1;
+			decimal upNow = aroonUp[idx];
+			decimal downNow = aroonDown[idx];
+			decimal upPrev = aroonUp[idx - 1];
+			decimal downPrev = aroonDown[idx - 1];
+
+			// BUY: Aroon Up crosses above Aroon Down with strong values
+			bool bullishCross = upNow > downNow && upPrev <= downPrev;
+			bool strongUptrend = upNow > 70m && downNow < 30m;
+
+			if (bullishCross && upNow > 60m)
+			{
+				decimal strength = 0.50m;
+				if (strongUptrend) strength += 0.20m;
+				if (upNow > 85m) strength += 0.10m;
+
+				// Confirm with price momentum
+				bool priceConfirm = closes[^1] > closes[^3];
+				if (priceConfirm) strength += 0.10m;
+
+				return new("Buy", Clamp01(strength),
+					$"Aroon uptrend emerging (Up={upNow:F0}, Down={downNow:F0})");
+			}
+
+			// SELL: Aroon Down crosses above Aroon Up with strong values
+			bool bearishCross = downNow > upNow && downPrev <= upPrev;
+			bool strongDowntrend = downNow > 70m && upNow < 30m;
+
+			if (bearishCross && downNow > 60m)
+			{
+				decimal strength = 0.50m;
+				if (strongDowntrend) strength += 0.20m;
+				if (downNow > 85m) strength += 0.10m;
+
+				bool priceConfirm = closes[^1] < closes[^3];
+				if (priceConfirm) strength += 0.10m;
+
+				return new("Sell", Clamp01(strength),
+					$"Aroon downtrend emerging (Up={upNow:F0}, Down={downNow:F0})");
+			}
+
+			return Hold("No Aroon trend change");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 6: ROC MOMENTUM BURST
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// Rate of Change Momentum Burst - Catches strong momentum moves
+		/// Excellent for capturing explosive price movements
+		/// </summary>
+		public static StrategySignal RocMomentumBurst(
+			List<decimal> closes, List<decimal> volumes, int rocPeriod = 12)
+		{
+			if (closes.Count < rocPeriod + 20 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			var roc = Indicators.ROC(closes, rocPeriod);
+			if (roc.Count < 10) return Hold("ROC not ready");
+
+			int idx = roc.Count - 1;
+			decimal currentROC = roc[idx];
+			decimal prevROC = roc[idx - 1];
+
+			// Calculate ROC momentum (acceleration)
+			decimal rocChange = currentROC - prevROC;
+
+			// Check volume
+			int volIdx = closes.Count - 1;
+			var recentVols = volumes.Skip(Math.Max(0, volIdx - 20)).Take(20).ToList();
+			decimal avgVol = recentVols.Average();
+			decimal volRatio = volumes[volIdx] / Math.Max(avgVol, 1m);
+
+			// BUY: Strong positive ROC burst
+			if (currentROC > 3m && rocChange > 1.5m && currentROC > prevROC)
+			{
+				bool volumeConfirm = volRatio > 1.3m;
+				bool accelerating = rocChange > 2m;
+
+				decimal strength = 0.60m;
+				if (volumeConfirm) strength += 0.20m;
+				if (accelerating) strength += 0.10m;
+
+				return new("Buy", Clamp01(strength),
+					$"ROC momentum burst ↑ (ROC={currentROC:F1}%, vol={volRatio:F2}x)");
+			}
+
+			// SELL: Strong negative ROC burst
+			if (currentROC < -3m && rocChange < -1.5m && currentROC < prevROC)
+			{
+				bool volumeConfirm = volRatio > 1.3m;
+				bool accelerating = rocChange < -2m;
+
+				decimal strength = 0.60m;
+				if (volumeConfirm) strength += 0.20m;
+				if (accelerating) strength += 0.10m;
+
+				return new("Sell", Clamp01(strength),
+					$"ROC momentum burst ↓ (ROC={currentROC:F1}%, vol={volRatio:F2}x)");
+			}
+
+			return Hold("No ROC momentum burst");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 7: TSI CROSSOVER (True Strength Index)
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// TSI Crossover Strategy - Double-smoothed momentum signals
+		/// Fewer false signals than RSI, catches strong trends early
+		/// </summary>
+		public static StrategySignal TSICrossover(List<decimal> closes)
+		{
+			if (closes.Count < 50) return Hold("insufficient data");
+
+			var (tsi, signal) = Indicators.TSI(closes, 25, 13, 7);
+
+			if (tsi.Count < 3 || signal.Count < 3) return Hold("TSI not ready");
+
+			int idx = tsi.Count - 1;
+			decimal tsiNow = tsi[idx];
+			decimal signalNow = signal[idx];
+			decimal tsiPrev = tsi[idx - 1];
+			decimal signalPrev = signal[idx - 1];
+
+			// BUY: TSI crosses above signal line
+			bool bullishCross = tsiNow > signalNow && tsiPrev <= signalPrev;
+
+			if (bullishCross && tsiNow > -20m)  // Not too oversold
+			{
+				bool strongMomentum = tsiNow > 10m;
+				bool increasing = tsi[idx] > tsi[idx - 2];
+
+				decimal strength = 0.55m;
+				if (strongMomentum) strength += 0.20m;
+				if (increasing) strength += 0.10m;
+
+				return new("Buy", Clamp01(strength),
+					$"TSI bullish crossover (TSI={tsiNow:F1}, Signal={signalNow:F1})");
+			}
+
+			// SELL: TSI crosses below signal line
+			bool bearishCross = tsiNow < signalNow && tsiPrev >= signalPrev;
+
+			if (bearishCross && tsiNow < 20m)  // Not too overbought
+			{
+				bool strongMomentum = tsiNow < -10m;
+				bool decreasing = tsi[idx] < tsi[idx - 2];
+
+				decimal strength = 0.55m;
+				if (strongMomentum) strength += 0.20m;
+				if (decreasing) strength += 0.10m;
+
+				return new("Sell", Clamp01(strength),
+					$"TSI bearish crossover (TSI={tsiNow:F1}, Signal={signalNow:F1})");
+			}
+
+			return Hold("No TSI crossover");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 8: VORTEX INDICATOR TREND
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// Vortex Indicator Strategy - Identifies trend changes and strength
+		/// Excellent for catching trend reversals early
+		/// </summary>
+		public static StrategySignal VortexTrend(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes)
+		{
+			if (closes.Count < 30) return Hold("insufficient data");
+
+			var (viPlus, viMinus) = Indicators.VortexIndicator(
+				highs, lows, closes, 14);
+
+			if (viPlus.Count < 3) return Hold("Vortex not ready");
+
+			int idx = viPlus.Count - 1;
+			decimal viPlusNow = viPlus[idx];
+			decimal viMinusNow = viMinus[idx];
+			decimal viPlusPrev = viPlus[idx - 1];
+			decimal viMinusPrev = viMinus[idx - 1];
+
+			// BUY: VI+ crosses above VI-
+			bool bullishCross = viPlusNow > viMinusNow && viPlusPrev <= viMinusPrev;
+
+			if (bullishCross && viPlusNow > 1.0m)
+			{
+				decimal spread = viPlusNow - viMinusNow;
+				bool strongTrend = spread > 0.15m;
+
+				decimal strength = 0.55m;
+				strength += Math.Min(spread * 2m, 0.25m);
+
+				return new("Buy", Clamp01(strength),
+					$"Vortex uptrend (VI+={viPlusNow:F2}, VI-={viMinusNow:F2})");
+			}
+
+			// SELL: VI- crosses above VI+
+			bool bearishCross = viMinusNow > viPlusNow && viMinusPrev <= viPlusPrev;
+
+			if (bearishCross && viMinusNow > 1.0m)
+			{
+				decimal spread = viMinusNow - viPlusNow;
+				bool strongTrend = spread > 0.15m;
+
+				decimal strength = 0.55m;
+				strength += Math.Min(spread * 2m, 0.25m);
+
+				return new("Sell", Clamp01(strength),
+					$"Vortex downtrend (VI+={viPlusNow:F2}, VI-={viMinusNow:F2})");
+			}
+
+			return Hold("No Vortex trend change");
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// STRATEGY 9: MULTI-INDICATOR CONFLUENCE
+		// ══════════════════════════════════════════════════════════════════
+		/// <summary>
+		/// Multi-Indicator Confluence Strategy - Requires multiple confirmations
+		/// Very high accuracy but lower frequency
+		/// </summary>
+		public static StrategySignal MultiIndicatorConfluence(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes, List<decimal> volumes)
+		{
+			if (closes.Count < 50 || volumes.Count != closes.Count)
+				return Hold("insufficient data");
+
+			int confluenceScore = 0;
+			var reasons = new List<string>();
+
+			// 1. RSI check
+			var rsi = Indicators.RSIList(closes, 14);
+			if (rsi.Count > 0)
+			{
+				decimal rsiVal = rsi[^1];
+				if (rsiVal > 35m && rsiVal < 55m) { confluenceScore++; reasons.Add("RSI neutral"); }
+				else if (rsiVal < 35m) { confluenceScore++; reasons.Add("RSI oversold"); }
+			}
+
+			// 2. MACD check
+			var (macd, signal, hist) = Indicators.MACDSeries(closes);
+			if (hist.Count > 2)
+			{
+				bool macdBullish = hist[^1] > 0 && hist[^1] > hist[^2];
+				bool macdBearish = hist[^1] < 0 && hist[^1] < hist[^2];
+				if (macdBullish) { confluenceScore++; reasons.Add("MACD bullish"); }
+				if (macdBearish) { confluenceScore--; reasons.Add("MACD bearish"); }
+			}
+
+			// 3. Volume check
+			var recentVols = volumes.Skip(Math.Max(0, volumes.Count - 20)).Take(20).ToList();
+			decimal volRatio = volumes[^1] / recentVols.Average();
+			if (volRatio > 1.2m) { confluenceScore++; reasons.Add("Volume spike"); }
+
+			// 4. Price momentum
+			bool priceUp = closes[^1] > closes[^5];
+			if (priceUp) { confluenceScore++; reasons.Add("Price momentum"); }
+
+			// 5. ADX trend strength
+			var (adx, diPlus, diMinus) = Indicators.ADXList(highs, lows, closes, 14);
+			if (adx.Count > 0 && adx[^1] > 20m)
+			{
+				if (diPlus[^1] > diMinus[^1]) { confluenceScore++; reasons.Add("ADX uptrend"); }
+				else { confluenceScore--; reasons.Add("ADX downtrend"); }
+			}
+
+			// Decision based on confluence score
+			if (confluenceScore >= 4)  // Strong bullish confluence
+			{
+				decimal strength = 0.65m + (confluenceScore - 4) * 0.05m;
+				return new("Buy", Clamp01(strength),
+					$"Bullish confluence ({confluenceScore}/5): {string.Join(", ", reasons)}");
+			}
+			else if (confluenceScore <= -2)  // Bearish confluence
+			{
+				decimal strength = 0.60m + Math.Abs(confluenceScore + 2) * 0.05m;
+				return new("Sell", Clamp01(strength),
+					$"Bearish confluence ({confluenceScore}/5): {string.Join(", ", reasons)}");
+			}
+
+			return Hold($"Insufficient confluence (score={confluenceScore})");
+		}
 	}
 }
