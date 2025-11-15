@@ -707,7 +707,7 @@ namespace TraderBotV1
 											4,  // EmaRsi
 											5,  // BollingerMeanReversion
 											7,  // MacdDivergence
-											12, // VWAP - proven strategy, add to core
+											11, // VWAP - proven strategy, add to core
 										};
 
 			var coreSignals = signals.Where(s =>
