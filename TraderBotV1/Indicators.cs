@@ -117,7 +117,7 @@ namespace TraderBotV1
 			return result;
 		}
 
-		/// <summary>Moving Average Convergence Divergence</summary>
+		/// <summary>Moving Average Convergence Divergence - SWING OPTIMIZED</summary>
 		public static (List<decimal> macd, List<decimal> signal, List<decimal> hist) MACDSeries(
 			List<decimal> closes, int fast = 12, int slow = 26, int signal = 9)
 		{
@@ -138,9 +138,9 @@ namespace TraderBotV1
 			return (macd, paddedSig, hist);
 		}
 
-		/// <summary>Bollinger Bands</summary>
+		/// <summary>Bollinger Bands - SWING OPTIMIZED (25 period default)</summary>
 		public static (List<decimal?> upper, List<decimal?> middle, List<decimal?> lower)
-			BollingerBandsFast(List<decimal> closes, int period = 20, decimal mult = 2m)
+			BollingerBandsFast(List<decimal> closes, int period = 25, decimal mult = 2m)
 		{
 			var upper = new List<decimal?>();
 			var middle = new List<decimal?>();
@@ -1797,6 +1797,446 @@ namespace TraderBotV1
 
 			return (viPlus, viMinus);
 		}
+
+
+		// ═══════════════════════════════════════════════════════════════════
+		// NEW SWING TRADING INDICATORS
+		// Add these methods to your Indicators.cs class
+		// ═══════════════════════════════════════════════════════════════════
+
+		/// <summary>
+		/// Elder Ray Index - Measures buying and selling pressure
+		/// Bull Power = High - EMA(13)
+		/// Bear Power = Low - EMA(13)
+		/// </summary>
+		public static (List<decimal> bullPower, List<decimal> bearPower) ElderRay(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 13)
+		{
+			if (closes == null || highs == null || lows == null)
+				return (new List<decimal>(), new List<decimal>());
+
+			var ema = EMAList(closes, period);
+			var bullPower = new List<decimal>();
+			var bearPower = new List<decimal>();
+
+			for (int i = 0; i < closes.Count; i++)
+			{
+				if (i < period - 1)
+				{
+					bullPower.Add(0);
+					bearPower.Add(0);
+				}
+				else
+				{
+					bullPower.Add(Math.Round(highs[i] - ema[i], 4));
+					bearPower.Add(Math.Round(lows[i] - ema[i], 4));
+				}
+			}
+
+			return (bullPower, bearPower);
+		}
+
+		/// <summary>
+		/// Choppiness Index - Determines if market is trending or ranging
+		/// Values > 61.8: Market is choppy/ranging - avoid trend strategies
+		/// Values < 38.2: Market is trending - use trend-following strategies
+		/// Values 38.2-61.8: Neutral
+		/// </summary>
+		public static List<decimal> ChoppinessIndex(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes, int period = 14)
+		{
+			var ci = new List<decimal>();
+
+			if (closes == null || highs == null || lows == null || closes.Count < period + 14)
+				return ci;
+
+			var atr = ATRList(highs, lows, closes, period);
+
+			for (int i = 0; i < closes.Count; i++)
+			{
+				if (i < period)
+				{
+					ci.Add(50m); // Neutral default
+					continue;
+				}
+
+				// Get ATR values for the period
+				var atrWindow = atr.Skip(i - period + 1).Take(period).ToList();
+				decimal atrSum = atrWindow.Sum();
+
+				// Find highest high and lowest low in period
+				var highWindow = highs.Skip(i - period + 1).Take(period);
+				var lowWindow = lows.Skip(i - period + 1).Take(period);
+
+				decimal highestHigh = highWindow.Max();
+				decimal lowestLow = lowWindow.Min();
+				decimal range = highestHigh - lowestLow;
+
+				if (range == 0 || atrSum == 0)
+				{
+					ci.Add(50m);
+					continue;
+				}
+
+				// Calculate Choppiness Index
+				decimal logValue = (decimal)Math.Log10((double)(atrSum / range));
+				decimal logPeriod = (decimal)Math.Log10(period);
+				decimal chop = 100m * logValue / logPeriod;
+
+				ci.Add(Math.Round(Math.Clamp(chop, 0m, 100m), 2));
+			}
+
+			return ci;
+		}
+
+		/// <summary>
+		/// Linear Regression Channel - Better than Bollinger Bands for trending markets
+		/// Returns: (regression line, upper channel, lower channel)
+		/// </summary>
+		public static (List<decimal> regression, List<decimal> upper, List<decimal> lower)
+			LinearRegressionChannel(List<decimal> closes, int period = 20, decimal stdDevs = 2m)
+		{
+			var regression = new List<decimal>();
+			var upper = new List<decimal>();
+			var lower = new List<decimal>();
+
+			if (closes == null || closes.Count < period)
+				return (regression, upper, lower);
+
+			for (int i = 0; i < closes.Count; i++)
+			{
+				if (i < period - 1)
+				{
+					regression.Add(closes[i]);
+					upper.Add(closes[i]);
+					lower.Add(closes[i]);
+					continue;
+				}
+
+				var window = closes.Skip(i - period + 1).Take(period).ToList();
+
+				// Calculate linear regression using least squares method
+				decimal sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+				for (int j = 0; j < period; j++)
+				{
+					decimal x = j;
+					decimal y = window[j];
+					sumX += x;
+					sumY += y;
+					sumXY += x * y;
+					sumX2 += x * x;
+				}
+
+				decimal n = period;
+				decimal slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+				decimal intercept = (sumY - slope * sumX) / n;
+
+				// Calculate regression value at current point
+				decimal regValue = intercept + slope * (period - 1);
+
+				// Calculate standard deviation from regression line
+				decimal sumSquaredErrors = 0;
+				for (int j = 0; j < period; j++)
+				{
+					decimal predictedY = intercept + slope * j;
+					decimal error = window[j] - predictedY;
+					sumSquaredErrors += error * error;
+				}
+
+				decimal stdDev = (decimal)Math.Sqrt((double)(sumSquaredErrors / period));
+
+				regression.Add(Math.Round(regValue, 4));
+				upper.Add(Math.Round(regValue + stdDevs * stdDev, 4));
+				lower.Add(Math.Round(regValue - stdDevs * stdDev, 4));
+			}
+
+			return (regression, upper, lower);
+		}
+
+		/// <summary>
+		/// Williams Alligator - Bill Williams' trend-following indicator
+		/// Returns: (jaw=13-SMA, teeth=8-SMA, lips=5-SMA)
+		/// Lines intertwined = sleeping alligator (no trend, avoid trading)
+		/// Lines separated and parallel = eating alligator (strong trend, trade)
+		/// </summary>
+		public static (List<decimal> jaw, List<decimal> teeth, List<decimal> lips)
+			Alligator(List<decimal> closes)
+		{
+			if (closes == null || closes.Count < 13)
+				return (new List<decimal>(), new List<decimal>(), new List<decimal>());
+
+			// Using SMAs instead of SMoothed MAs for simplicity
+			// In production, you might want to use Smoothed Moving Averages
+			var jaw = SMAList(closes, 13).Select(v => v ?? closes.FirstOrDefault()).ToList();
+			var teeth = SMAList(closes, 8).Select(v => v ?? closes.FirstOrDefault()).ToList();
+			var lips = SMAList(closes, 5).Select(v => v ?? closes.FirstOrDefault()).ToList();
+
+			return (jaw, teeth, lips);
+		}
+
+		/// <summary>
+		/// Pivot Points Calculator - Classic support/resistance levels
+		/// Returns: (pivot, resistance1, resistance2, resistance3, support1, support2, support3)
+		/// Use yesterday's high/low/close for today's pivots
+		/// Weekly pivots are more reliable for swing trading
+		/// </summary>
+		public static (decimal pivot, decimal r1, decimal r2, decimal r3, decimal s1, decimal s2, decimal s3)
+			CalculatePivotPoints(decimal high, decimal low, decimal close)
+		{
+			decimal pivot = (high + low + close) / 3m;
+
+			decimal r1 = (2m * pivot) - low;
+			decimal s1 = (2m * pivot) - high;
+
+			decimal r2 = pivot + (high - low);
+			decimal s2 = pivot - (high - low);
+
+			decimal r3 = high + 2m * (pivot - low);
+			decimal s3 = low - 2m * (high - pivot);
+
+			return (
+				Math.Round(pivot, 4),
+				Math.Round(r1, 4), Math.Round(r2, 4), Math.Round(r3, 4),
+				Math.Round(s1, 4), Math.Round(s2, 4), Math.Round(s3, 4)
+			);
+		}
+
+		/// <summary>
+		/// Fibonacci Retracement Levels - Common reversal zones
+		/// Returns list of (fib level, price, label)
+		/// Key levels: 38.2%, 50%, 61.8% (Golden Ratio)
+		/// </summary>
+		public static List<(decimal level, decimal price, string label)> FibonacciRetracement(
+			decimal swingHigh, decimal swingLow, bool isUptrend = true)
+		{
+			var fibLevels = new[] { 0m, 0.236m, 0.382m, 0.5m, 0.618m, 0.786m, 1m };
+			var range = swingHigh - swingLow;
+
+			return fibLevels.Select(fib =>
+			{
+				decimal price = isUptrend
+					? swingHigh - (range * fib)
+					: swingLow + (range * fib);
+
+				string label = fib switch
+				{
+					0m => "0%",
+					0.236m => "23.6%",
+					0.382m => "38.2%",
+					0.5m => "50%",
+					0.618m => "61.8%",
+					0.786m => "78.6%",
+					1m => "100%",
+					_ => $"{fib:P1}"
+				};
+
+				return (level: fib, price: Math.Round(price, 2), label: label);
+			}).ToList();
+		}
+
+		/// <summary>
+		/// Heikin-Ashi Transformation - Smoothed candlesticks for easier trend identification
+		/// Long HA candles = strong trend (hold position)
+		/// Short HA candles with upper/lower shadows = trend weakness (prepare to exit)
+		/// </summary>
+		public static List<(decimal open, decimal high, decimal low, decimal close)> HeikinAshi(
+			List<decimal> opens, List<decimal> highs, List<decimal> lows, List<decimal> closes)
+		{
+			var ha = new List<(decimal open, decimal high, decimal low, decimal close)>();
+
+			if (closes == null || opens == null || highs == null || lows == null)
+				return ha;
+
+			if (closes.Count != opens.Count || closes.Count != highs.Count || closes.Count != lows.Count)
+				return ha;
+
+			decimal haOpen = (opens[0] + closes[0]) / 2m;
+			decimal haClose = (opens[0] + highs[0] + lows[0] + closes[0]) / 4m;
+
+			for (int i = 0; i < closes.Count; i++)
+			{
+				if (i > 0)
+				{
+					haOpen = (ha[i - 1].open + ha[i - 1].close) / 2m;
+				}
+
+				haClose = (opens[i] + highs[i] + lows[i] + closes[i]) / 4m;
+				decimal haHigh = Math.Max(highs[i], Math.Max(haOpen, haClose));
+				decimal haLow = Math.Min(lows[i], Math.Min(haOpen, haClose));
+
+				ha.Add((
+					Math.Round(haOpen, 4),
+					Math.Round(haHigh, 4),
+					Math.Round(haLow, 4),
+					Math.Round(haClose, 4)
+				));
+			}
+
+			return ha;
+		}
+
+		/// <summary>
+		/// ADXR (Average Directional Movement Index Rating)
+		/// Smoother version of ADX - more reliable for swing trading
+		/// ADXR = (Current ADX + ADX from N periods ago) / 2
+		/// </summary>
+		public static List<decimal> ADXR(List<decimal> adxValues, int period = 14)
+		{
+			var adxr = new List<decimal>();
+
+			if (adxValues == null || adxValues.Count < period)
+				return adxr;
+
+			for (int i = 0; i < adxValues.Count; i++)
+			{
+				if (i < period)
+				{
+					adxr.Add(adxValues[i]); // Use ADX value for initial periods
+				}
+				else
+				{
+					decimal currentADX = adxValues[i];
+					decimal pastADX = adxValues[i - period];
+					decimal adxrValue = (currentADX + pastADX) / 2m;
+					adxr.Add(Math.Round(adxrValue, 2));
+				}
+			}
+
+			return adxr;
+		}
+
+		/// <summary>
+		/// Detect Swing Highs - Used for pattern recognition and Fibonacci calculations
+		/// A swing high is a bar with high > highs of N bars before and after
+		/// </summary>
+		public static List<(int index, decimal price)> FindSwingHighs(
+			List<decimal> highs, int lookback = 5)
+		{
+			var swingHighs = new List<(int index, decimal price)>();
+
+			if (highs == null || highs.Count < lookback * 2 + 1)
+				return swingHighs;
+
+			for (int i = lookback; i < highs.Count - lookback; i++)
+			{
+				bool isSwingHigh = true;
+				decimal currentHigh = highs[i];
+
+				// Check bars before
+				for (int j = i - lookback; j < i; j++)
+				{
+					if (highs[j] >= currentHigh)
+					{
+						isSwingHigh = false;
+						break;
+					}
+				}
+
+				// Check bars after
+				if (isSwingHigh)
+				{
+					for (int j = i + 1; j <= i + lookback; j++)
+					{
+						if (highs[j] >= currentHigh)
+						{
+							isSwingHigh = false;
+							break;
+						}
+					}
+				}
+
+				if (isSwingHigh)
+				{
+					swingHighs.Add((i, currentHigh));
+				}
+			}
+
+			return swingHighs;
+		}
+
+		/// <summary>
+		/// Detect Swing Lows - Used for pattern recognition and Fibonacci calculations
+		/// A swing low is a bar with low < lows of N bars before and after
+		/// </summary>
+		public static List<(int index, decimal price)> FindSwingLows(
+			List<decimal> lows, int lookback = 5)
+		{
+			var swingLows = new List<(int index, decimal price)>();
+
+			if (lows == null || lows.Count < lookback * 2 + 1)
+				return swingLows;
+
+			for (int i = lookback; i < lows.Count - lookback; i++)
+			{
+				bool isSwingLow = true;
+				decimal currentLow = lows[i];
+
+				// Check bars before
+				for (int j = i - lookback; j < i; j++)
+				{
+					if (lows[j] <= currentLow)
+					{
+						isSwingLow = false;
+						break;
+					}
+				}
+
+				// Check bars after
+				if (isSwingLow)
+				{
+					for (int j = i + 1; j <= i + lookback; j++)
+					{
+						if (lows[j] <= currentLow)
+						{
+							isSwingLow = false;
+							break;
+						}
+					}
+				}
+
+				if (isSwingLow)
+				{
+					swingLows.Add((i, currentLow));
+				}
+			}
+
+			return swingLows;
+		}
+
+		/// <summary>
+		/// Aggregate Daily Bars to Weekly Bars
+		/// Essential for weekly trend analysis in swing trading
+		/// </summary>
+		public static List<(decimal open, decimal high, decimal low, decimal close, decimal volume, DateTime timestamp)>
+			AggregateToWeekly(
+				List<decimal> opens, List<decimal> highs, List<decimal> lows,
+				List<decimal> closes, List<decimal> volumes, List<DateTime> timestamps)
+		{
+			var weeklyBars = new List<(decimal open, decimal high, decimal low, decimal close, decimal volume, DateTime timestamp)>();
+
+			if (closes == null || closes.Count < 5)
+				return weeklyBars;
+
+			for (int i = 0; i + 4 < closes.Count; i += 5)
+			{
+				int endIdx = Math.Min(i + 4, closes.Count - 1);
+				int barsInWeek = endIdx - i + 1;
+
+				if (barsInWeek < 5) break; // Skip incomplete weeks
+
+				decimal weekOpen = opens[i];
+				decimal weekHigh = highs.Skip(i).Take(barsInWeek).Max();
+				decimal weekLow = lows.Skip(i).Take(barsInWeek).Min();
+				decimal weekClose = closes[endIdx];
+				decimal weekVolume = volumes.Skip(i).Take(barsInWeek).Sum();
+				DateTime weekEnd = timestamps[endIdx];
+
+				weeklyBars.Add((weekOpen, weekHigh, weekLow, weekClose, weekVolume, weekEnd));
+			}
+
+			return weeklyBars;
+		}
+
 	}
 
 
@@ -1816,8 +2256,16 @@ namespace TraderBotV1
 			public bool IsDowntrend { get; set; }
 			public bool IsSideways { get; set; }
 			public decimal TrendStrength { get; set; }
-		}
+			public string Description { get; set; } = "";
 
+		}
+		public record SupportResistanceLevel
+		{
+			public decimal Level { get; set; }
+			public bool IsSupport { get; set; }
+			public int TouchCount { get; set; }
+			public decimal Strength { get; set; }
+		}
 		public class SignalValidation
 		{
 			public bool IsValid { get; set; }
@@ -1834,136 +2282,159 @@ namespace TraderBotV1
 		}
 
 		/// <summary>Market context analysis</summary>
-		public static MarketContext AnalyzeMarketContext(List<decimal> prices, List<decimal> highs,
-			List<decimal> lows, int idx)
+		/// <summary>
+		/// SWING TRADING: Analyze market context with longer lookback
+		/// </summary>
+		public static MarketContext AnalyzeMarketContext(
+			List<decimal> closes, List<decimal> highs, List<decimal> lows, int idx)
 		{
-			if (idx < 50) return new MarketContext();
+			if (idx < 30) // ⭐ SWING: Need 30+ days
+				return new MarketContext { Description = "Insufficient data" };
 
-			var recentPrices = prices.Skip(Math.Max(0, idx - 20)).Take(20).ToList();
-			var mediumPrices = prices.Skip(Math.Max(0, idx - 50)).Take(50).ToList();
+			// ⭐ SWING: Use 20/50 EMAs for trend (not 9/21)
+			var ema20 = Indicators.EMAList(closes, 20);
+			var ema50 = Indicators.EMAList(closes, 50);
 
-			decimal recentVol = CalculateVolatility(recentPrices);
-			decimal mediumVol = CalculateVolatility(mediumPrices);
+			if (ema20.Count <= idx || ema50.Count <= idx)
+				return new MarketContext { Description = "EMA not ready" };
 
-			decimal recentRange = (recentPrices.Max() - recentPrices.Min()) / Math.Max(recentPrices.Average(), 1e-8m);
+			decimal currentPrice = closes[idx];
+			decimal ema20Val = ema20[idx];
+			decimal ema50Val = ema50[idx];
 
-			var ema20 = Indicators.EMA(prices.Take(idx + 1).ToList(), 20);
-			var ema50 = Indicators.EMA(prices.Take(idx + 1).ToList(), 50);
-			var ema200 = idx >= 200 ? Indicators.EMA(prices.Take(idx + 1).ToList(), 200) : ema50;
+			// Trend determination
+			bool priceAboveEma20 = currentPrice > ema20Val;
+			bool priceAboveEma50 = currentPrice > ema50Val;
+			bool ema20AboveEma50 = ema20Val > ema50Val;
+
+			// ⭐ SWING: Calculate trend strength over 10 days (not 5)
+			decimal trendStrength = 0m;
+			if (idx >= 10)
+			{
+				var recentPrices = closes.Skip(idx - 10).Take(10).ToList();
+				var avgChange = recentPrices.Zip(recentPrices.Skip(1), (a, b) => (b - a) / a).Average();
+				trendStrength = Math.Abs(avgChange);
+			}
+
+			// Determine trend
+			bool isUptrend = priceAboveEma20 && priceAboveEma50 && ema20AboveEma50;
+			bool isDowntrend = !priceAboveEma20 && !priceAboveEma50 && !ema20AboveEma50;
+
+			string description = isUptrend ? "Strong Uptrend" :
+								isDowntrend ? "Strong Downtrend" :
+								priceAboveEma20 ? "Weak Uptrend" : "Weak Downtrend";
 
 			return new MarketContext
 			{
-				RecentVolatility = recentVol,
-				MediumVolatility = mediumVol,
-				VolatilityRatio = mediumVol > 0 ? recentVol / mediumVol : 1m,
-				RecentRange = recentRange,
-				IsUptrend = ema20 > ema50 && ema50 > ema200,
-				IsDowntrend = ema20 < ema50 && ema50 < ema200,
-				IsSideways = Math.Abs(ema20 - ema50) / Math.Max(ema50, 1e-8m) < 0.005m,
-				TrendStrength = Math.Abs(ema20 - ema50) / Math.Max(ema50, 1e-8m)
+				IsUptrend = isUptrend,
+				IsDowntrend = isDowntrend,
+				TrendStrength = trendStrength,
+				Description = description
 			};
 		}
 
-		/// <summary>EMA Crossover validation</summary>
-		public static SignalValidation ValidateEMACrossover(List<decimal> prices, List<decimal> fastEma,
-			List<decimal> slowEma, int idx, string direction)
+		/// <summary>
+		/// SWING TRADING: EMA crossover with longer periods
+		/// </summary>
+		public static SignalValidation ValidateEMACrossover(
+			List<decimal> closes, List<decimal> emaFast, List<decimal> emaSlow,
+			int idx, string direction)
 		{
 			var validation = new SignalValidation { IsValid = false };
 
-			if (idx < 5 || fastEma.Count <= idx || slowEma.Count <= idx)
-				return validation.Fail("Insufficient data");
+			if (idx < 5 || emaFast.Count <= idx || emaSlow.Count <= idx)
+				return validation.Fail("Insufficient EMA data");
+
+			decimal priceCurrent = closes[idx];
+			decimal emaF = emaFast[idx];
+			decimal emaS = emaSlow[idx];
+
+			// ⭐ SWING: Need meaningful separation (0.8% instead of 0.3%)
+			decimal separation = Math.Abs(emaF - emaS) / priceCurrent;
+			if (separation < 0.008m)
+				return validation.Fail($"EMAs too close ({separation:P2})");
 
 			bool isBuy = direction == "Buy";
-			bool crossover = isBuy
-				? (fastEma[idx] > slowEma[idx] && fastEma[idx - 1] <= slowEma[idx - 1])
-				: (fastEma[idx] < slowEma[idx] && fastEma[idx - 1] >= slowEma[idx - 1]);
 
-			if (!crossover)
-				return validation.Fail("No crossover");
+			// ⭐ SWING: Check momentum over 3 days (not 2)
+			bool momentum = idx >= 3 &&
+				(isBuy ? closes[idx] > closes[idx - 3] : closes[idx] < closes[idx - 3]);
 
-			var context = AnalyzeMarketContext(prices, prices, prices, idx);
-
-			if (context.IsSideways || context.RecentRange < 0.008m)
-				return validation.Fail($"Choppy market (range={context.RecentRange:P2})");
-
-			// Separation check
-			decimal separation = Math.Abs(fastEma[idx] - slowEma[idx]) / Math.Max(slowEma[idx], 1e-8m);
-			if (separation < 0.005m)
-				return validation.Fail($"EMA too close: {separation:P2}");
-
-			// Momentum check
-			bool momentum = isBuy
-				? (fastEma[idx] > fastEma[idx - 2])
-				: (fastEma[idx] < fastEma[idx - 2]);
-
-			// Price confirmation
-			bool priceConfirm = isBuy
-				? (prices[idx] > prices[idx - 2])
-				: (prices[idx] < prices[idx - 2]);
-
-			if (!priceConfirm)
-				return validation.Fail("Price divergence");
-
-			// Trend alignment
-			bool trendAligned = isBuy ? !context.IsDowntrend : !context.IsUptrend;
+			if (!momentum)
+				return validation.Fail("Weak price momentum");
 
 			validation.IsValid = true;
-			validation.Confidence = CalculateConfidence(separation, momentum, priceConfirm, trendAligned);
-			validation.Reason = $"Valid crossover with {validation.Confidence:P0} confidence";
+			validation.Confidence = 0.60m + Math.Min(separation * 30m, 0.25m);
+			validation.Reason = $"EMA crossover validated (sep={separation:P2})";
 
 			return validation;
 		}
 
+
 		/// <summary>RSI signal validation</summary>
+		/// <summary>
+		/// SWING TRADING: RSI validation with swing-appropriate levels
+		/// </summary>
 		public static SignalValidation ValidateRSI(List<decimal> rsi, List<decimal> prices, int idx, string direction)
 		{
 			var validation = new SignalValidation { IsValid = false };
 
-			if (idx < 10 || rsi.Count <= idx)
-				return validation.Fail("Insufficient RSI data");
+			if (rsi.Count == 0 || idx >= rsi.Count)
+				return validation.Fail("RSI not available");
 
+			decimal rsiValue = rsi[idx];
 			bool isBuy = direction == "Buy";
-			decimal rsiNow = rsi[idx];
 
 			if (isBuy)
 			{
-				bool wasOversold = rsi.Skip(Math.Max(0, idx - 10)).Take(10).Any(r => r < 30m);
-				if (!wasOversold)
-					return validation.Fail("No oversold condition");
-
-				if (rsiNow < 30m || rsiNow > 70m)
-					return validation.Fail($"RSI out of range: {rsiNow:F1}");
-
-				if (!(rsi[idx] > rsi[idx - 1] && rsi[idx - 1] > rsi[idx - 2]))
-					return validation.Fail("RSI not rising");
-
-				bool bullishDiv = CheckBullishDivergence(prices, rsi, idx, 15);
-
-				validation.IsValid = true;
-				validation.Confidence = bullishDiv ? 0.9m : 0.7m;
-				validation.Reason = bullishDiv
-					? $"RSI buy with bullish divergence (RSI={rsiNow:F1})"
-					: $"RSI buy signal (RSI={rsiNow:F1})";
+				// ⭐ SWING: More lenient RSI for swing trading
+				if (rsiValue < 30m)  // Oversold - excellent
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.85m;
+					validation.Reason = $"RSI oversold ({rsiValue:F1})";
+				}
+				else if (rsiValue >= 30m && rsiValue <= 55m)  // ⭐ SWING: Good range
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = $"RSI favorable ({rsiValue:F1})";
+				}
+				else if (rsiValue > 55m && rsiValue <= 65m)  // Acceptable
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.55m;
+					validation.Reason = $"RSI acceptable ({rsiValue:F1})";
+				}
+				else
+				{
+					return validation.Fail($"RSI too high for buy ({rsiValue:F1})");
+				}
 			}
-			else
+			else // Sell
 			{
-				bool wasOverbought = rsi.Skip(Math.Max(0, idx - 10)).Take(10).Any(r => r > 70m);
-				if (!wasOverbought)
-					return validation.Fail("No overbought condition");
-
-				if (rsiNow > 70m || rsiNow < 30m)
-					return validation.Fail($"RSI out of range: {rsiNow:F1}");
-
-				if (!(rsi[idx] < rsi[idx - 1] && rsi[idx - 1] < rsi[idx - 2]))
-					return validation.Fail("RSI not falling");
-
-				bool bearishDiv = CheckBearishDivergence(prices, rsi, idx, 15);
-
-				validation.IsValid = true;
-				validation.Confidence = bearishDiv ? 0.9m : 0.7m;
-				validation.Reason = bearishDiv
-					? $"RSI sell with bearish divergence (RSI={rsiNow:F1})"
-					: $"RSI sell signal (RSI={rsiNow:F1})";
+				if (rsiValue > 70m)  // Overbought - excellent
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.85m;
+					validation.Reason = $"RSI overbought ({rsiValue:F1})";
+				}
+				else if (rsiValue >= 45m && rsiValue <= 70m)  // ⭐ SWING: Good range
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = $"RSI favorable ({rsiValue:F1})";
+				}
+				else if (rsiValue >= 35m && rsiValue < 45m)  // Acceptable
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.55m;
+					validation.Reason = $"RSI acceptable ({rsiValue:F1})";
+				}
+				else
+				{
+					return validation.Fail($"RSI too low for sell ({rsiValue:F1})");
+				}
 			}
 
 			return validation;
@@ -2069,17 +2540,19 @@ namespace TraderBotV1
 			return validation;
 		}
 
-		/// <summary>Volume spike validation</summary>
+		/// <summary>
+		/// SWING TRADING: Volume spike validation with daily perspective
+		/// </summary>
 		public static SignalValidation ValidateVolumeSpike(List<decimal> volumes, List<decimal> prices,
-			int idx, decimal spikeMultiple = 1.2m)  // ⚖️ MORE LENIENT: 1.2x
+			int idx, decimal spikeMultiple = 1.3m)  // ⭐ SWING: 1.3x threshold
 		{
 			var validation = new SignalValidation { IsValid = false };
 
-			if (volumes == null || volumes.Count <= idx || idx < 20)
+			if (volumes == null || volumes.Count <= idx || idx < 30)  // ⭐ SWING: 30-day average
 				return validation.Fail("Insufficient volume data");
 
 			decimal currentVol = volumes[idx];
-			var recentVols = volumes.Skip(Math.Max(0, idx - 20)).Take(20).ToList();
+			var recentVols = volumes.Skip(Math.Max(0, idx - 30)).Take(30).ToList();
 			decimal avgVol = recentVols.Average();
 
 			if (avgVol <= 0)
@@ -2092,7 +2565,7 @@ namespace TraderBotV1
 			bool upBar = prices[idx] > prices[idx - 1];
 
 			validation.IsValid = true;
-			validation.Confidence = Math.Min((volMultiple - spikeMultiple) / spikeMultiple + 0.6m, 1m);
+			validation.Confidence = Math.Min((volMultiple - spikeMultiple) / spikeMultiple + 0.65m, 1m);
 			validation.Reason = $"Volume spike {volMultiple:F2}x on {(upBar ? "up" : "down")} bar";
 
 			return validation;
@@ -2192,6 +2665,104 @@ namespace TraderBotV1
 			return validation;
 		}
 
+		/// <summary>
+		/// SWING TRADING: Support/Resistance finder with daily bars
+		/// </summary>
+		public static List<SupportResistanceLevel> FindSupportResistance(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes,
+			int lookback = 60)  // ⭐ SWING: 60 days lookback
+		{
+			var levels = new List<SupportResistanceLevel>();
+
+			if (closes.Count < lookback + 10)
+				return levels;
+
+			int endIdx = closes.Count - 1;
+			int startIdx = Math.Max(0, endIdx - lookback);
+
+			// ⭐ SWING: Find swing highs/lows with 3-day window
+			var swingHighs = new List<(int idx, decimal price)>();
+			var swingLows = new List<(int idx, decimal price)>();
+
+			for (int i = startIdx + 3; i <= endIdx - 3; i++)
+			{
+				// Swing high: higher than 3 days on each side
+				if (highs[i] > highs[i - 1] && highs[i] > highs[i - 2] && highs[i] > highs[i - 3] &&
+					highs[i] > highs[i + 1] && highs[i] > highs[i + 2] && highs[i] > highs[i + 3])
+				{
+					swingHighs.Add((i, highs[i]));
+				}
+
+				// Swing low: lower than 3 days on each side
+				if (lows[i] < lows[i - 1] && lows[i] < lows[i - 2] && lows[i] < lows[i - 3] &&
+					lows[i] < lows[i + 1] && lows[i] < lows[i + 2] && lows[i] < lows[i + 3])
+				{
+					swingLows.Add((i, lows[i]));
+				}
+			}
+
+			// Cluster levels - ⭐ SWING: 1.5% proximity (not 1%)
+			decimal clusterTolerance = 0.015m;
+
+			// Process resistance levels
+			var resistanceClusters = ClusterLevels(swingHighs.Select(s => s.price).ToList(), clusterTolerance);
+			foreach (var level in resistanceClusters.Take(5))
+			{
+				int touches = swingHighs.Count(s => Math.Abs(s.price - level) / level < clusterTolerance);
+				levels.Add(new SupportResistanceLevel
+				{
+					Level = level,
+					IsSupport = false,
+					TouchCount = touches,
+					Strength = Math.Min(touches / 3m, 1m)
+				});
+			}
+
+			// Process support levels
+			var supportClusters = ClusterLevels(swingLows.Select(s => s.price).ToList(), clusterTolerance);
+			foreach (var level in supportClusters.Take(5))
+			{
+				int touches = swingLows.Count(s => Math.Abs(s.price - level) / level < clusterTolerance);
+				levels.Add(new SupportResistanceLevel
+				{
+					Level = level,
+					IsSupport = true,
+					TouchCount = touches,
+					Strength = Math.Min(touches / 3m, 1m)
+				});
+			}
+
+			return levels.OrderByDescending(l => l.Strength).ToList();
+		}
+
+		private static List<decimal> ClusterLevels(List<decimal> levels, decimal tolerance)
+		{
+			if (levels.Count == 0) return new List<decimal>();
+
+			var clusters = new List<List<decimal>>();
+			var sorted = levels.OrderBy(l => l).ToList();
+
+			var currentCluster = new List<decimal> { sorted[0] };
+
+			for (int i = 1; i < sorted.Count; i++)
+			{
+				if (Math.Abs(sorted[i] - currentCluster.Last()) / sorted[i] < tolerance)
+				{
+					currentCluster.Add(sorted[i]);
+				}
+				else
+				{
+					clusters.Add(currentCluster);
+					currentCluster = new List<decimal> { sorted[i] };
+				}
+			}
+			clusters.Add(currentCluster);
+
+			return clusters
+				.OrderByDescending(c => c.Count)
+				.Select(c => c.Average())
+				.ToList();
+		}
 		// ──────────────────────────────────────────────────────────
 		// PRIVATE HELPERS
 		// ──────────────────────────────────────────────────────────

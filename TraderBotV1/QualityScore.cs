@@ -22,6 +22,19 @@ namespace TraderBotV1
 	/// </summary>
 	public static class ImprovedQualityScore
 	{
+
+		public static decimal CalculateSwingQualityScore(
+					List<decimal> opens,
+					List<decimal> closes,
+					List<decimal> highs,
+					List<decimal> lows,
+					List<decimal> volumes,
+					string proposedDirection)
+		{
+			// Delegate to swing trading version
+			return SwingTradingQualityScore.Calculate(opens, closes, highs, lows, volumes, proposedDirection);
+		}
+
 		/// <summary>
 		/// Calculate enhanced quality score with 7 factors (0-100 scale)
 		/// STRICTER than original - no baseline giveaways
