@@ -1,29 +1,25 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
+﻿using Dapper;
 using Microsoft.Data.SqlClient;
-using Dapper;
 
 namespace TraderBotV1.Data
 {
-	public class SqlServerStorage
-	{
-		private readonly string _connectionString = "Server=23.19.249.88,784;Database=nairbinod_lmsone;User Id=nairbinod_sa;Password=33!6Shady;Encrypt=False;TrustServerCertificate=true";
+    public class SqlServerStorage
+    {
+        private readonly string _connectionString = "Server=23.19.249.88,784;Database=nairbinod_lmsone;User Id=nairbinod_sa;Password=33!6Shady;Encrypt=False;TrustServerCertificate=true";
 
-		public SqlServerStorage(string connectionString = "")
-		{
-			//_connectionString = connectionString;
-			//InitializeDatabase();
-		}
+        public SqlServerStorage(string connectionString = "")
+        {
+            //_connectionString = connectionString;
+            //InitializeDatabase();
+        }
 
-		private void InitializeDatabase()
-		{
-			using var conn = new SqlConnection(_connectionString);
-			conn.Open();
+        private void InitializeDatabase()
+        {
+            using var conn = new SqlConnection(_connectionString);
+            conn.Open();
 
-			// Prices table
-			conn.Execute(@"
+            // Prices table
+            conn.Execute(@"
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'tb_prices')
                 BEGIN
                     CREATE TABLE prices (
@@ -39,8 +35,8 @@ namespace TraderBotV1.Data
                     )
                 END");
 
-			// Signals table
-			conn.Execute(@"
+            // Signals table
+            conn.Execute(@"
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'tb_signals')
                 BEGIN
                     CREATE TABLE signals (
@@ -54,8 +50,8 @@ namespace TraderBotV1.Data
                     )
                 END");
 
-			// Trades table with bar_date
-			conn.Execute(@"
+            // Trades table with bar_date
+            conn.Execute(@"
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'tb_trades')
                 BEGIN
                     CREATE TABLE trades (
@@ -71,8 +67,8 @@ namespace TraderBotV1.Data
                     )
                 END");
 
-			// Create indices for better query performance
-			conn.Execute(@"
+            // Create indices for better query performance
+            conn.Execute(@"
                 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_prices_symbol')
                     CREATE INDEX idx_prices_symbol ON tb_prices(symbol);
                 
@@ -91,215 +87,207 @@ namespace TraderBotV1.Data
                 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_trades_bar_date')
                     CREATE INDEX idx_trades_bar_date ON tb_trades(bar_date);
             ");
-		}
+        }
 
-		// ═══════════════════════════════════════════════════════════════
-		// Price Data Methods
-		// ═══════════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════════
+        // Price Data Methods
+        // ═══════════════════════════════════════════════════════════════
 
-		public void InsertPrice(string symbol, DateTime timestamp, decimal open, decimal high,
-			decimal low, decimal close, long volume)
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public void InsertPrice(string symbol, DateTime timestamp, decimal open, decimal high,
+            decimal low, decimal close, long volume)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
+            var sql = @"
                 INSERT INTO tb_prices (symbol, timestamp, [open], high, low, [close], volume)
                 VALUES (@symbol, @timestamp, @open, @high, @low, @close, @volume)";
 
-			conn.Execute(sql, new
-			{
-				symbol,
-				timestamp,
-				open,
-				high,
-				low,
-				close,
-				volume
-			});
-		}
+            conn.Execute(sql, new
+            {
+                symbol,
+                timestamp,
+                open,
+                high,
+                low,
+                close,
+                volume
+            });
+        }
 
-		public List<PriceRecord> GetPrices(string symbol, DateTime? startDate = null, DateTime? endDate = null)
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public List<PriceRecord> GetPrices(string symbol, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var whereClauses = new List<string> { "symbol = @symbol" };
-			var parameters = new DynamicParameters();
-			parameters.Add("symbol", symbol);
+            var whereClauses = new List<string> { "symbol = @symbol" };
+            var parameters = new DynamicParameters();
+            parameters.Add("symbol", symbol);
 
-			if (startDate.HasValue)
-			{
-				whereClauses.Add("timestamp >= @startDate");
-				parameters.Add("startDate", startDate.Value);
-			}
-			if (endDate.HasValue)
-			{
-				whereClauses.Add("timestamp <= @endDate");
-				parameters.Add("endDate", endDate.Value);
-			}
+            if (startDate.HasValue)
+            {
+                whereClauses.Add("timestamp >= @startDate");
+                parameters.Add("startDate", startDate.Value);
+            }
+            if (endDate.HasValue)
+            {
+                whereClauses.Add("timestamp <= @endDate");
+                parameters.Add("endDate", endDate.Value);
+            }
 
-			var sql = $@"
+            var sql = $@"
                 SELECT id, symbol, timestamp, [open], high, low, [close], volume, created_at
                 FROM tb_prices
                 WHERE {string.Join(" AND ", whereClauses)}
                 ORDER BY timestamp ASC";
 
-			return conn.Query<PriceRecord>(sql, parameters).ToList();
-		}
+            return conn.Query<PriceRecord>(sql, parameters).ToList();
+        }
 
-		// ═══════════════════════════════════════════════════════════════
-		// Signal Methods
-		// ═══════════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════════
+        // Signal Methods
+        // ═══════════════════════════════════════════════════════════════
 
-		public void InsertSignal(string symbol, DateTime timestamp, string strategy, string signal, string? reason = null)
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public void InsertSignal(string symbol, DateTime timestamp, string strategy, string signal, string? reason = null)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
+            var sql = @"
                 INSERT INTO tb_signals (symbol, timestamp, strategy, signal, reason)
                 VALUES (@symbol, @timestamp, @strategy, @signal, @reason)";
 
-			conn.Execute(sql, new
-			{
-				symbol,
-				timestamp,
-				strategy,
-				signal,
-				reason
-			});
-		}
+            conn.Execute(sql, new
+            {
+                symbol,
+                timestamp,
+                strategy,
+                signal,
+                reason
+            });
+        }
 
-		public List<SignalRecord> GetSignals(string? symbol = null, DateTime? startDate = null, DateTime? endDate = null)
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public List<SignalRecord> GetSignals(string? symbol = null, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var whereClauses = new List<string>();
-			var parameters = new DynamicParameters();
+            var whereClauses = new List<string>();
+            var parameters = new DynamicParameters();
 
-			if (!string.IsNullOrWhiteSpace(symbol))
-			{
-				whereClauses.Add("symbol = @symbol");
-				parameters.Add("symbol", symbol);
-			}
-			if (startDate.HasValue)
-			{
-				whereClauses.Add("timestamp >= @startDate");
-				parameters.Add("startDate", startDate.Value);
-			}
-			if (endDate.HasValue)
-			{
-				whereClauses.Add("timestamp <= @endDate");
-				parameters.Add("endDate", endDate.Value);
-			}
+            if (!string.IsNullOrWhiteSpace(symbol))
+            {
+                whereClauses.Add("symbol = @symbol");
+                parameters.Add("symbol", symbol);
+            }
+            if (startDate.HasValue)
+            {
+                whereClauses.Add("timestamp >= @startDate");
+                parameters.Add("startDate", startDate.Value);
+            }
+            if (endDate.HasValue)
+            {
+                whereClauses.Add("timestamp <= @endDate");
+                parameters.Add("endDate", endDate.Value);
+            }
 
-			var whereClause = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
+            var whereClause = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
-			var sql = $@"
+            var sql = $@"
                 SELECT id, symbol, timestamp, strategy, signal, reason, created_at
                 FROM tb_signals
                 {whereClause}
                 ORDER BY timestamp DESC";
 
-			return conn.Query<SignalRecord>(sql, parameters).ToList();
-		}
+            return conn.Query<SignalRecord>(sql, parameters).ToList();
+        }
 
-		// ═══════════════════════════════════════════════════════════════
-		// Trade Methods (UPDATED with bar_date)
-		// ═══════════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════════
+        // Trade Methods (UPDATED with bar_date)
+        // ═══════════════════════════════════════════════════════════════
 
-		public void InsertTrade(string symbol, DateTime signalTimestamp, DateTime? barDate, string side,
-			long quantity, decimal price, decimal totalValue, decimal confidence, decimal quality)
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public void InsertTrade(string symbol, DateTime signalTimestamp, DateTime? barDate, string side,
+            long quantity, decimal price, decimal totalValue, decimal confidence, decimal quality)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
+            var sql = @"
                 INSERT INTO tb_trades (symbol, signal_timestamp, bar_date, side, quantity, price, total_value,confidence,quality)
                 VALUES (@symbol, @signalTimestamp, @barDate, @side, @quantity, @price, @totalValue, @confidence,@quality)";
 
-			conn.Execute(sql, new
-			{
-				symbol,
-				signalTimestamp,
-				barDate,
-				side,
-				quantity,
-				price,
-				totalValue,
-				confidence,
-				quality
-			});
-		}
+            conn.Execute(sql, new
+            {
+                symbol,
+                signalTimestamp,
+                barDate,
+                side,
+                quantity,
+                price,
+                totalValue,
+                confidence,
+                quality
+            });
+        }
 
-		public List<TradeRecord> GetTrades(string? symbol = null, DateTime? startDate = null,
-			DateTime? endDate = null, string? side = null)
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public List<TradeRecord> GetTrades(string? symbol = null, DateTime? startDate = null,
+            DateTime? endDate = null, string? side = null)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var whereClauses = new List<string>();
-			var parameters = new DynamicParameters();
+            var whereClauses = new List<string>();
+            var parameters = new DynamicParameters();
 
-			if (!string.IsNullOrWhiteSpace(symbol))
-			{
-				whereClauses.Add("symbol = @symbol");
-				parameters.Add("symbol", symbol);
-			}
-			if (startDate.HasValue)
-			{
-				whereClauses.Add("bar_date >= @startDate");
-				parameters.Add("startDate", startDate.Value);
-			}
-			if (endDate.HasValue)
-			{
-				whereClauses.Add("bar_date <= @endDate");
-				parameters.Add("endDate", endDate.Value);
-			}
-			if (!string.IsNullOrWhiteSpace(side))
-			{
-				whereClauses.Add("side = @side");
-				parameters.Add("side", side);
-			}
+            if (!string.IsNullOrWhiteSpace(symbol))
+            {
+                whereClauses.Add("symbol = @symbol");
+                parameters.Add("symbol", symbol);
+            }
+            if (startDate.HasValue)
+            {
+                whereClauses.Add("bar_date >= @startDate");
+                parameters.Add("startDate", startDate.Value);
+            }
+            if (endDate.HasValue)
+            {
+                whereClauses.Add("bar_date <= @endDate");
+                parameters.Add("endDate", endDate.Value);
+            }
+            if (!string.IsNullOrWhiteSpace(side))
+            {
+                whereClauses.Add("side = @side");
+                parameters.Add("side", side);
+            }
 
-			var whereClause = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
+            var whereClause = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
-			var sql = $@"
+            var sql = $@"
                 SELECT id, symbol, signal_timestamp, bar_date, side, quantity, price, total_value, created_at
                 FROM dbo.tb_trades
                 {whereClause}
                 ORDER BY bar_date DESC, signal_timestamp DESC";
 
-			return conn.Query<TradeRecord>(sql, parameters).ToList();
-		}
+            return conn.Query<TradeRecord>(sql, parameters).ToList();
+        }
 
-		// ═══════════════════════════════════════════════════════════════
-		// Utility Methods
-		// ═══════════════════════════════════════════════════════════════
+        // ═══════════════════════════════════════════════════════════════
+        // Utility Methods
+        // ═══════════════════════════════════════════════════════════════
 
-		public List<string> GetActiveSymbols()
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public List<string> GetActiveSymbols()
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
+            var sql = @"
                 SELECT DISTINCT symbol 
                 FROM dbo.tb_symbols 
                 WHERE isActive = 1
                 ORDER BY symbol";
 
-			return conn.Query<string>(sql).ToList();
-		}
+            return conn.Query<string>(sql).ToList();
+        }
 
-		public List<string> GetTradedSymbols()
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public async Task<IEnumerable<TradeRecord>> GetTradeHistory()//DateTime from, DateTime to)
+        {
+            // Example Dapper code (commented out):
 
-			var sql = @"SELECT DISTINCT symbol FROM dbo.tb_tradeshistory ORDER BY symbol";
-
-			return conn.Query<string>(sql).ToList();
-		}
-		public async Task<IEnumerable<TradeRecord>> GetTradeHistory(DateTime from, DateTime to)
-		{
-			// Example Dapper code (commented out):
-
-			using var conn = new SqlConnection(_connectionString);
-			var sql = @"
+            using var conn = new SqlConnection(_connectionString);
+            var sql = @"
                 SELECT
                    [id]
                   ,[symbol]
@@ -315,17 +303,18 @@ namespace TraderBotV1.Data
                   ,[current_price] CurrentPrice
                   ,[lastupdatedon]
                 FROM dbo.[tb_tradeshistory]
-                WHERE [bar_date] BETWEEN @From AND @To
+                WHERE isActive is null or isActive = 1 
                 ORDER BY [bar_date] ASC,quality DESC,confidence DESC";
-			return await conn.QueryAsync<TradeRecord>(sql, new { From = from, To = to });
-		}
+            //[bar_date] BETWEEN @From AND @To
+            return await conn.QueryAsync<TradeRecord>(sql);//, new { From = from, To = to });
+        }
 
-		public void InsertTradeHistoryDetail(int tradeHistoryId, string symbol, DateTime timestamp, DateTime? barDate, 
-											decimal price)
-		{
-			using var conn = new SqlConnection(_connectionString);
+        public void InsertTradeHistoryDetail(int tradeHistoryId, string symbol, DateTime? timestamp, DateTime? barDate,
+                                            decimal price)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
+            var sql = @"
                 INSERT INTO [tb_tradeshistory_details] (
 							[tb_tradehistory_id]
 						   ,[symbol]
@@ -335,57 +324,57 @@ namespace TraderBotV1.Data
 						   ,[created_at])
                 VALUES (@tradeHistoryId, @symbol, @timestamp, @barDate, @price , @created_at)";
 
-			conn.Execute(sql, new
-			{
-				tradeHistoryId,
-				symbol,
-				timestamp,
-				barDate,
-				price,
-				created_at = DateTime.Now
-			});
-		}
-		public void UpdateCurrentValue(string symbol, decimal current_price)
-		{
-			using var conn = new SqlConnection(_connectionString);
+            conn.Execute(sql, new
+            {
+                tradeHistoryId,
+                symbol,
+                timestamp,
+                barDate,
+                price,
+                created_at = DateTime.Now
+            });
+        }
+        public void UpdateCurrentValue(string symbol, decimal current_price)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
+            var sql = @"
                 UPDATE dbo.tb_TradesHistory 
                 SET current_price = @current_price, 
                     lastupdatedon = @lastupdatedon 
                 WHERE symbol = @symbol";
 
-			conn.Execute(sql, new
-			{
-				current_price,
-				lastupdatedon = DateTime.Now,
-				symbol
-			});
-		}
+            conn.Execute(sql, new
+            {
+                current_price,
+                lastupdatedon = DateTime.Now,
+                symbol
+            });
+        }
 
-		/// <summary>
-		/// Get trade statistics for a symbol
-		/// </summary>
-		public TradeStatistics GetTradeStatistics(string symbol, DateTime? startDate = null, DateTime? endDate = null)
-		{
-			using var conn = new SqlConnection(_connectionString);
+        /// <summary>
+        /// Get trade statistics for a symbol
+        /// </summary>
+        public TradeStatistics GetTradeStatistics(string symbol, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            using var conn = new SqlConnection(_connectionString);
 
-			var whereClauses = new List<string> { "symbol = @symbol" };
-			var parameters = new DynamicParameters();
-			parameters.Add("symbol", symbol);
+            var whereClauses = new List<string> { "symbol = @symbol" };
+            var parameters = new DynamicParameters();
+            parameters.Add("symbol", symbol);
 
-			if (startDate.HasValue)
-			{
-				whereClauses.Add("bar_date >= @startDate");
-				parameters.Add("startDate", startDate.Value);
-			}
-			if (endDate.HasValue)
-			{
-				whereClauses.Add("bar_date <= @endDate");
-				parameters.Add("endDate", endDate.Value);
-			}
+            if (startDate.HasValue)
+            {
+                whereClauses.Add("bar_date >= @startDate");
+                parameters.Add("startDate", startDate.Value);
+            }
+            if (endDate.HasValue)
+            {
+                whereClauses.Add("bar_date <= @endDate");
+                parameters.Add("endDate", endDate.Value);
+            }
 
-			var sql = $@"
+            var sql = $@"
                 SELECT 
                     COUNT(*) as TotalTrades,
                     SUM(CASE WHEN side = 'Buy' THEN 1 ELSE 0 END) as BuyCount,
@@ -397,80 +386,80 @@ namespace TraderBotV1.Data
                 FROM dbo.tb_trades
                 WHERE {string.Join(" AND ", whereClauses)}";
 
-			var stats = conn.QueryFirstOrDefault<TradeStatistics>(sql, parameters);
+            var stats = conn.QueryFirstOrDefault<TradeStatistics>(sql, parameters);
 
-			if (stats != null)
-			{
-				stats.Symbol = symbol;
-				return stats;
-			}
+            if (stats != null)
+            {
+                stats.Symbol = symbol;
+                return stats;
+            }
 
-			return new TradeStatistics { Symbol = symbol };
-		}
+            return new TradeStatistics { Symbol = symbol };
+        }
 
-		/// <summary>
-		/// Clear all data (use with caution!)
-		/// </summary>
-		public void ClearAllData()
-		{
-			using var conn = new SqlConnection(_connectionString);
-			conn.Execute(@"ResetData");
-			Console.WriteLine("⚠️ All data cleared from database");
-		}
-	}
+        /// <summary>
+        /// Clear all data (use with caution!)
+        /// </summary>
+        public void ClearAllData()
+        {
+            using var conn = new SqlConnection(_connectionString);
+            conn.Execute(@"ResetData");
+            Console.WriteLine("⚠️ All data cleared from database");
+        }
+    }
 
-	// ═══════════════════════════════════════════════════════════════
-	// Data Models
-	// ═══════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
+    // Data Models
+    // ═══════════════════════════════════════════════════════════════
 
-	public class PriceRecord
-	{
-		public int Id { get; set; }
-		public string Symbol { get; set; } = "";
-		public DateTime Timestamp { get; set; }
-		public decimal Open { get; set; }
-		public decimal High { get; set; }
-		public decimal Low { get; set; }
-		public decimal Close { get; set; }
-		public long Volume { get; set; }
-		public DateTime CreatedAt { get; set; }
-	}
+    public class PriceRecord
+    {
+        public int Id { get; set; }
+        public string Symbol { get; set; } = "";
+        public DateTime Timestamp { get; set; }
+        public decimal Open { get; set; }
+        public decimal High { get; set; }
+        public decimal Low { get; set; }
+        public decimal Close { get; set; }
+        public long Volume { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
 
-	public class SignalRecord
-	{
-		public int Id { get; set; }
-		public string Symbol { get; set; } = "";
-		public DateTime Timestamp { get; set; }
-		public string Strategy { get; set; } = "";
-		public string Signal { get; set; } = "";
-		public string? Reason { get; set; }
-		public DateTime CreatedAt { get; set; }
-	}
+    public class SignalRecord
+    {
+        public int Id { get; set; }
+        public string Symbol { get; set; } = "";
+        public DateTime Timestamp { get; set; }
+        public string Strategy { get; set; } = "";
+        public string Signal { get; set; } = "";
+        public string? Reason { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
 
-	public class TradeRecord
-	{
-		public int Id { get; set; }
-		public string Symbol { get; set; } = "";
-		public DateTime SignalTimestamp { get; set; }
-		public DateTime? BarDate { get; set; }  // NEW: Date from the price bar
-		public string Side { get; set; } = "";
-		public long Quantity { get; set; }
-		public decimal Price { get; set; }
-		public decimal TotalValue { get; set; }
-		public decimal Confidence { get; set; }
-		public decimal Quality { get; set; }
-		public DateTime CreatedAt { get; set; }
-	}
+    public class TradeRecord
+    {
+        public int Id { get; set; }
+        public string Symbol { get; set; } = "";
+        public DateTime SignalTimestamp { get; set; }
+        public DateTime? BarDate { get; set; }  // NEW: Date from the price bar
+        public string Side { get; set; } = "";
+        public long Quantity { get; set; }
+        public decimal Price { get; set; }
+        public decimal TotalValue { get; set; }
+        public decimal Confidence { get; set; }
+        public decimal Quality { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
 
-	public class TradeStatistics
-	{
-		public string Symbol { get; set; } = "";
-		public int TotalTrades { get; set; }
-		public int BuyCount { get; set; }
-		public int SellCount { get; set; }
-		public decimal TotalVolume { get; set; }
-		public decimal AvgPrice { get; set; }
-		public decimal MinPrice { get; set; }
-		public decimal MaxPrice { get; set; }
-	}
+    public class TradeStatistics
+    {
+        public string Symbol { get; set; } = "";
+        public int TotalTrades { get; set; }
+        public int BuyCount { get; set; }
+        public int SellCount { get; set; }
+        public decimal TotalVolume { get; set; }
+        public decimal AvgPrice { get; set; }
+        public decimal MinPrice { get; set; }
+        public decimal MaxPrice { get; set; }
+    }
 }

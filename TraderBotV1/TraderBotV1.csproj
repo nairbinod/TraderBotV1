@@ -1,39 +1,40 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net8.0</TargetFramework>
+		<SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <Compile Remove="IndicatorsEnhanced.cs" />
-    <Compile Remove="Indicators_Extended.cs" />
-    <Compile Remove="StrategiesAdvanced.cs" />
-    <Compile Remove="StrategiesEnhanced.cs" />
-    <Compile Remove="Strategies_Extended.cs" />
-    <Compile Remove="TradeEngine.cs" />
-    <Compile Remove="TradeEngineEnhanced.cs" />
-    <Compile Remove="TradeLogger.cs" />
-    <Compile Remove="TradeLogic.cs" />
-    <Compile Remove="TradingBot.cs" />
-  </ItemGroup>
+	<ItemGroup>
+		<Compile Remove="IndicatorsEnhanced.cs" />
+		<Compile Remove="Indicators_Extended.cs" />
+		<Compile Remove="StrategiesAdvanced.cs" />
+		<Compile Remove="StrategiesEnhanced.cs" />
+		<Compile Remove="Strategies_Extended.cs" />
+		<Compile Remove="TradeEngine.cs" />
+		<Compile Remove="TradeEngineEnhanced.cs" />
+		<Compile Remove="TradeLogger.cs" />
+		<Compile Remove="TradeLogic.cs" />
+		<Compile Remove="TradingBot.cs" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Alpaca.Markets" Version="8.0.0-beta4" />
-    <PackageReference Include="Alpaca.Markets.Extensions" Version="7.2.0" />
-    <PackageReference Include="Dapper" Version="2.1.66" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.3" />
-    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.10" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Alpaca.Markets" Version="8.0.0-beta4" />
+		<PackageReference Include="Alpaca.Markets.Extensions" Version="7.2.0" />
+		<PackageReference Include="Dapper" Version="2.1.66" />
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.3" />
+		<PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.10" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <None Update="appsettings.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+	<ItemGroup>
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
 
 </Project>

@@ -41,12 +41,14 @@ CREATE TABLE dbo.tb_symbols(
 					quality float,
                     created_at datetime default getdate(),
 					current_price float,
-					lastupdatedon datetime
+					lastupdatedon DATETIME,
+					isActive BIT null
                 )
 				go
 
+--DROP TABLE  [dbo].[tb_tradeshistory]				
 CREATE TABLE [dbo].[tb_tradeshistory](
-	[id] [int] NOT NULL,
+	[id] [int] NOT NULL PRIMARY KEY  ,
 	[symbol] [varchar](50) NOT NULL,
 	[signal_timestamp] [datetime] NOT NULL,
 	[bar_date] [datetime] NULL,
@@ -58,18 +60,19 @@ CREATE TABLE [dbo].[tb_tradeshistory](
 	[quality] [float] NULL,
 	[created_at] [datetime] NULL,
 	[current_price] [float] NULL,
-	[lastupdatedon] [datetime] NULL
+	[lastupdatedon] [datetime] NULL,
+	isActive BIT null
 ) ON [PRIMARY]
 GO
 
 
 
-				CREATE TABLE dbo.tb_tradeshistory_details (
-                    id INTEGER PRIMARY KEY IDENTITY(1,1),
-                    tb_tradehistory_id int,
-					symbol varchar(50) NOT NULL,
-                    signal_timestamp datetime NOT NULL,
-                    bar_date datetime,
-                    price float NOT NULL,
-                    created_at datetime default getdate()
-					)
+CREATE TABLE dbo.tb_tradeshistory_details (
+    id INTEGER PRIMARY KEY IDENTITY(1,1),
+    tb_tradehistory_id int,
+	symbol varchar(50) NOT NULL,
+    signal_timestamp datetime NOT NULL,
+    bar_date datetime,
+    price float NOT NULL,
+    created_at datetime default getdate()
+	)

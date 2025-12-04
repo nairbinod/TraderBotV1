@@ -217,7 +217,7 @@
         <div class="card mt-4">
             <div class="card-body">
                 <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
-                    <div class="d-flex gap-2 align-items-center">
+                    @*<div class="d-flex gap-2 align-items-center">
                         <label class="mb-0 small text-muted">Symbol</label>
                         <InputSelect @bind-Value="selectedSymbol" class="form-select form-select-sm" style="width:140px;">
                             <option value="">--Select--</option>
@@ -226,7 +226,7 @@
                                 <option value="@s">@s</option>
                             }
                         </InputSelect>
-                    </div>
+                    </div>*@
 
                     <div class="d-flex gap-2 align-items-center">
                         <label class="mb-0 small text-muted">From</label>
@@ -242,7 +242,7 @@
                 @if (tradeHistory.Count > 0)
                 {
                     <div class="mt-3">
-                        <h6 class="mb-2">Trade history (@selectedSymbol) — @historyFrom.ToString("yyyy-MM-dd") to @historyTo.ToString("yyyy-MM-dd")</h6>
+                        <h6 class="mb-2">Trade history — @historyFrom.ToString("yyyy-MM-dd") to @historyTo.ToString("yyyy-MM-dd")</h6>
                         <div class="small text-muted mb-2">
                             Trades: @tradeHistory.Count | Total Value: @tradeHistory.Sum(t => t.TotalValue).ToString("C")
                         </div>
@@ -310,25 +310,35 @@
                                     }
                                     else
                                     {
-                                        <div class="small text-muted mb-2">Details for trade id: <span class="fw-semibold">@selectedTradeHistoryId</span></div>
+                                        @*<div class="small text-muted mb-2">Details for trade id: <span class="fw-semibold">@selectedTradeHistoryId</span></div>*@
                                         <div class="table-responsive">
                                             <table class="table table-sm">
                                                 <thead>
                                                     <tr>
-                                                        <th>Date</th>
-                                                        <th>Open</th>
-                                                        <th>High</th>
-                                                        <th>Low</th>
-                                                        <th>Close</th>
-                                                        <th>Volume</th>
+                                                        <th>Symbol</th>
+                                                        @*<th>Recommended On</th>*@
+                                                        @*<th>Recommended Price</th>*@
+                                                        @*<th>Confidence</th>
+        <th>Quality</th>*@
+                                                        <th>Bar Date</th>
+                                                        <th>Last Price</th>
+                                                        <th>Gain/Loss</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     @foreach (var d in tradeHistoryDetails)
                                                     {
-                                                        <tr>
+                                                        var rowClass = (d.Price > d.RecommendedPrice? "table-success" :
+                                                            d.Price < d.RecommendedPrice ? "table-danger" : "");
+                                                        <tr class="@rowClass" >
+                                                            <td>@d.Symbol</td>
+                                                            @*<td>@d.SignalTimestamp.ToString("yyyy-MM-dd")</td>*@
+                                                            @*<td>@d.RecommendedPrice.ToString("C")</td>*@
+                                                            @*<td>@d.Confidence.ToString("P0")</td>
+        <td>@d.Quality.ToString("P0")</td>*@
                                                             <td>@d.BarDate.ToString("yyyy-MM-dd")</td>
                                                             <td>@d.Price.ToString("C")</td>
+                                                            <td>@(d.Price-d.RecommendedPrice)</td>
                                                         </tr>
                                                     }
                                                 </tbody>

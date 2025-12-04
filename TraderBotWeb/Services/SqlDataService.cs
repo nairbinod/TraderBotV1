@@ -1,8 +1,5 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 /// <summary>
 /// Template showing how to implement a Dapper-based data service for SQL Server.
@@ -17,9 +14,9 @@ namespace TraderBotWeb.Services
 {
     public class SqlDataService : IDataService
     {
-		private readonly string _connectionString = "Server=23.19.249.88,784;Database=nairbinod_lmsone;User Id=nairbinod_sa;Password=33!6Shady;Encrypt=False;TrustServerCertificate=true";
+        private readonly string _connectionString = "Server=23.19.249.88,784;Database=nairbinod_lmsone;User Id=nairbinod_sa;Password=33!6Shady;Encrypt=False;TrustServerCertificate=true";
 
-		public SqlDataService(string connectionString ="")
+        public SqlDataService(string connectionString = "")
         {
             //_connectionString = connectionString;
         }
@@ -48,13 +45,13 @@ namespace TraderBotWeb.Services
                 ORDER BY [quality] DESC";
             return await conn.QueryAsync<RecommendationModel>(sql, new { Top = top });
 
-           // throw new NotImplementedException("SqlDataService is a template. Add Dapper and enable code.");
+            // throw new NotImplementedException("SqlDataService is a template. Add Dapper and enable code.");
         }
 
         public async Task<IEnumerable<TradeHistoryModel>> GetTradeHistoryAsync(string symbol, DateTime from, DateTime to)
         {
             // Example Dapper code (commented out):
-            
+
             using var conn = new SqlConnection(_connectionString);
             var sql = @"
                 SELECT
@@ -72,7 +69,7 @@ namespace TraderBotWeb.Services
                   ,[current_price] CurrentPrice
                   ,[lastupdatedon]
                 FROM dbo.[tb_tradeshistory]
-                WHERE [symbol] = @Symbol AND [bar_date] BETWEEN @From AND @To
+                WHERE (isActive is null or isActive = 1) and [symbol] = @Symbol AND [bar_date] BETWEEN @From AND @To
                 ORDER BY [bar_date] ASC ,quality,confidence";
             return await conn.QueryAsync<TradeHistoryModel>(sql, new { Symbol = symbol, From = from, To = to });
         }
@@ -80,8 +77,8 @@ namespace TraderBotWeb.Services
         // New: template for fetching all trade history across symbols within a date range
         public async Task<IEnumerable<TradeHistoryModel>> GetAllTradeHistoryAsync(DateTime from, DateTime to)
         {
-			// Example Dapper code (commented out):
-			
+            // Example Dapper code (commented out):
+
             using var conn = new SqlConnection(_connectionString);
             var sql = @"
                 SELECT
@@ -99,7 +96,7 @@ namespace TraderBotWeb.Services
                   ,[current_price] CurrentPrice
                   ,[lastupdatedon]
                 FROM dbo.[tb_tradeshistory]
-                WHERE [bar_date] BETWEEN @From AND @To
+                WHERE (isActive is null or isActive = 1) and  [bar_date] BETWEEN @From AND @To
                 ORDER BY [bar_date] ASC,quality DESC,confidence DESC";
             return await conn.QueryAsync<TradeHistoryModel>(sql, new { From = from, To = to });
         }
@@ -110,16 +107,21 @@ namespace TraderBotWeb.Services
             using var conn = new SqlConnection(_connectionString);
             var sql = @"
                 SELECT
-                    [id],
-                    [trade_history_id] as TradeHistoryId,
-                    [bar_date] as BarDate,
-                    [signal_timestamp] as SignalTimestamp ,
-                    [price],
-                    [created_at] as CreatedAt
-                FROM dbo.[tb_tradeshistory_details]
-                WHERE [trade_history_id] = @Id
-                ORDER BY [bar_date] ASC,quality DESC,confidence DESC";
-			return await conn.QueryAsync<TradeHistoryDetailModel>(sql, new { Id = tradeHistoryId });
+	                d.[id],
+	                d.[tb_tradehistory_id] as TradeHistoryId,
+	                d.[bar_date] as BarDate,
+	                d.[signal_timestamp] as SignalTimestamp ,
+	                d.[price],
+	                d.[created_at] as CreatedAt,
+	                h.[symbol],
+	                h.[price] as RecommendedPrice,
+	                h.[quality],
+	                h.[confidence],
+	                h.[side]
+                FROM dbo.[tb_tradeshistory_details] d inner join dbo.[tb_tradeshistory] h on d.tb_tradehistory_id = h.id
+                WHERE d.[tb_tradehistory_id] = @Id
+                ORDER BY d.[bar_date] ASC";
+            return await conn.QueryAsync<TradeHistoryDetailModel>(sql, new { Id = tradeHistoryId });
         }
 
         public Task SaveSubscriberAsync(SubscriptionModel subscriber)
