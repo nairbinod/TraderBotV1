@@ -215,12 +215,12 @@ namespace TraderBotV1
 			}
 		}
 
-		private static SqliteStorage InitializeDatabase(Config config)
+		private static SqlServerStorage InitializeDatabase(Config config)
 		{
 			try
 			{
 				Console.WriteLine("💾 Initializing database...");
-				var db = new SqliteStorage(config.DBPath);
+				var db = new SqlServerStorage();
 				Console.WriteLine("✅ Database ready\n");
 				return db;
 			}

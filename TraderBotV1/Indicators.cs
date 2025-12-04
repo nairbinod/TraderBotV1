@@ -2846,6 +2846,827 @@ namespace TraderBotV1
 		}
 
 
+		/// <summary>
+		/// PRIMARY FILTER #1: Market must be trending
+		/// Call this BEFORE any other validation
+		/// </summary>
+		public static SignalValidation ValidateTrendStrength(
+			List<decimal> adx, List<decimal> diPlus, List<decimal> diMinus,
+			int idx, string direction)
+		{
+			var validation = new SignalValidation { IsValid = false };
 
+			if (idx < 28 || adx.Count <= idx)
+				return validation.Fail("Insufficient ADX data");
+
+			decimal adxValue = adx[idx];
+			bool isBuy = direction == "Buy";
+
+			// GATE: Market must be trending
+			if (adxValue < 20m)
+				return validation.Fail($"Market ranging (ADX={adxValue:F1} < 20)");
+
+			// Check DI alignment with direction
+			if (diPlus.Count > idx && diMinus.Count > idx)
+			{
+				decimal diPlusVal = diPlus[idx];
+				decimal diMinusVal = diMinus[idx];
+
+				if (isBuy && diPlusVal < diMinusVal)
+					return validation.Fail($"DI- dominant ({diMinusVal:F1} > {diPlusVal:F1}) - bearish");
+
+				if (!isBuy && diMinusVal < diPlusVal)
+					return validation.Fail($"DI+ dominant ({diPlusVal:F1} > {diMinusVal:F1}) - bullish");
+			}
+
+			// Confidence based on ADX strength
+			if (adxValue >= 30m)
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.85m;
+				validation.Reason = $"Strong trend (ADX={adxValue:F1})";
+			}
+			else if (adxValue >= 25m)
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.75m;
+				validation.Reason = $"Moderate trend (ADX={adxValue:F1})";
+			}
+			else // 20-25
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.60m;
+				validation.Reason = $"Weak trend (ADX={adxValue:F1})";
+			}
+
+			return validation;
+		}
+
+		/// <summary>
+		/// PRIMARY FILTER #2: Market must not be choppy
+		/// Call this BEFORE any other validation
+		/// </summary>
+		public static SignalValidation ValidateChoppinessFilter(List<decimal> ci, int idx)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 14 || ci.Count <= idx)
+				return validation.Fail("Insufficient Choppiness data");
+
+			decimal ciValue = ci[idx];
+
+			// GATE: Market must not be too choppy
+			if (ciValue >61.8m)
+				return validation.Fail($"Market too choppy (CI={ciValue:F1} > 61.8)");
+
+			if (ciValue < 38.2m)
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.90m;
+				validation.Reason = $"Strong directional market (CI={ciValue:F1})";
+			}
+			else if (ciValue <= 50m)
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.75m;
+				validation.Reason = $"Moderate trend (CI={ciValue:F1})";
+			}
+			else // 50 - 61.8
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.55m;
+				validation.Reason = $"Borderline choppy (CI={ciValue:F1})";
+			}
+
+			return validation;
+		}
+
+		/// <summary>
+		/// PRIMARY FILTER #3: Signal must align with longer-term trend
+		/// </summary>
+		public static SignalValidation ValidateTrendAlignment(
+			List<decimal> closes, List<decimal> ema50, List<decimal> ema200,
+			int idx, string direction)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 200 || ema50.Count <= idx || ema200.Count <= idx)
+			{
+				// Not enough data for 200 EMA, use 50-day trend
+				if (idx >= 50 && closes.Count > idx)
+				{
+					decimal change50 = (closes[idx] - closes[idx - 50]) / closes[idx - 50];
+					bool isBuy = direction == "Buy";
+
+					if (isBuy && change50 < -0.10m)
+						return validation.Fail($"Strong downtrend ({change50:P1}) - avoid buy");
+					if (!isBuy && change50 > 0.10m)
+						return validation.Fail($"Strong uptrend ({change50:P1}) - avoid sell");
+
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = $"50-day trend acceptable ({change50:P1})";
+					return validation;
+				}
+
+				validation.IsValid = true;
+				validation.Confidence = 0.50m;
+				validation.Reason = "Insufficient trend data - proceed with caution";
+				return validation;
+			}
+
+			bool isBuyDir = direction == "Buy";
+			decimal price = closes[idx];
+			decimal ema50Val = ema50[idx];
+			decimal ema200Val = ema200[idx];
+
+			// Perfect alignment
+			bool bullishAlign = price > ema50Val && ema50Val > ema200Val;
+			bool bearishAlign = price < ema50Val && ema50Val < ema200Val;
+
+			if (isBuyDir)
+			{
+				if (bullishAlign)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.90m;
+					validation.Reason = "Perfect bullish alignment (P > 50 > 200)";
+				}
+				else if (price > ema200Val)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = "Price above 200 EMA - acceptable";
+				}
+				else
+				{
+					return validation.Fail("Price below 200 EMA - avoid buy");
+				}
+			}
+			else // Sell
+			{
+				if (bearishAlign)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.90m;
+					validation.Reason = "Perfect bearish alignment (P < 50 < 200)";
+				}
+				else if (price < ema200Val)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = "Price below 200 EMA - acceptable";
+				}
+				else
+				{
+					return validation.Fail("Price above 200 EMA - avoid sell");
+				}
+			}
+
+			return validation;
+		}
+
+
+		#region ENHANCED ENTRY SIGNAL VALIDATIONS
+
+		/// <summary>
+		/// Enhanced RSI with Divergence Detection
+		/// Higher win rate than standard RSI
+		/// </summary>
+		public static SignalValidation ValidateRSIWithDivergence(
+			List<decimal> rsi, List<decimal> prices, int idx, string direction)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (rsi.Count == 0 || idx >= rsi.Count || idx < 14)
+				return validation.Fail("RSI not available");
+
+			decimal rsiValue = rsi[idx];
+			bool isBuy = direction == "Buy";
+
+			// Check for divergence (HIGH WIN RATE SIGNAL)
+			bool hasDivergence = DetectRSIDivergence(prices, rsi, idx, isBuy);
+
+			if (isBuy)
+			{
+				if (rsiValue < 30m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = hasDivergence ? 0.92m : 0.82m;
+					validation.Reason = hasDivergence
+						? $"RSI oversold + bullish divergence ({rsiValue:F1})"
+						: $"RSI oversold ({rsiValue:F1})";
+				}
+				else if (rsiValue < 40m && hasDivergence)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.78m;
+					validation.Reason = $"RSI bullish divergence ({rsiValue:F1})";
+				}
+				else if (rsiValue >= 30m && rsiValue <= 55m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.65m;
+					validation.Reason = $"RSI favorable ({rsiValue:F1})";
+				}
+				else
+				{
+					return validation.Fail($"RSI too high for buy ({rsiValue:F1})");
+				}
+			}
+			else // Sell
+			{
+				if (rsiValue > 70m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = hasDivergence ? 0.92m : 0.82m;
+					validation.Reason = hasDivergence
+						? $"RSI overbought + bearish divergence ({rsiValue:F1})"
+						: $"RSI overbought ({rsiValue:F1})";
+				}
+				else if (rsiValue > 60m && hasDivergence)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.78m;
+					validation.Reason = $"RSI bearish divergence ({rsiValue:F1})";
+				}
+				else if (rsiValue >= 45m && rsiValue <= 70m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.65m;
+					validation.Reason = $"RSI favorable ({rsiValue:F1})";
+				}
+				else
+				{
+					return validation.Fail($"RSI too low for sell ({rsiValue:F1})");
+				}
+			}
+
+			return validation;
+		}
+
+		private static bool DetectRSIDivergence(List<decimal> prices, List<decimal> rsi, int idx, bool bullish)
+		{
+			if (idx < 14 || rsi.Count <= idx) return false;
+
+			int lookback = 14;
+			int startIdx = Math.Max(0, idx - lookback);
+			int actualLookback = idx - startIdx;
+
+			if (actualLookback < 10) return false;
+
+			var recentPrices = prices.Skip(startIdx).Take(actualLookback + 1).ToList();
+			var recentRSI = rsi.Skip(startIdx).Take(actualLookback + 1).ToList();
+
+			if (recentPrices.Count != recentRSI.Count || recentPrices.Count < 10)
+				return false;
+
+			if (bullish)
+			{
+				// Find two significant lows in price
+				int currentLowIdx = recentPrices.Count - 1;
+				decimal currentLow = recentPrices[currentLowIdx];
+
+				// Find previous low in first half
+				var firstHalf = recentPrices.Take(recentPrices.Count / 2).ToList();
+				if (firstHalf.Count == 0) return false;
+
+				int prevLowIdx = firstHalf.IndexOf(firstHalf.Min());
+				decimal prevLow = firstHalf[prevLowIdx];
+
+				// Bullish divergence: Price lower low, RSI higher low
+				if (currentLow < prevLow &&
+					recentRSI[currentLowIdx] > recentRSI[prevLowIdx] + 3m) // Need meaningful RSI increase
+				{
+					return true;
+				}
+			}
+			else
+			{
+				// Find two significant highs in price
+				int currentHighIdx = recentPrices.Count - 1;
+				decimal currentHigh = recentPrices[currentHighIdx];
+
+				var firstHalf = recentPrices.Take(recentPrices.Count / 2).ToList();
+				if (firstHalf.Count == 0) return false;
+
+				int prevHighIdx = firstHalf.IndexOf(firstHalf.Max());
+				decimal prevHigh = firstHalf[prevHighIdx];
+
+				// Bearish divergence: Price higher high, RSI lower high
+				if (currentHigh > prevHigh &&
+					recentRSI[currentHighIdx] < recentRSI[prevHighIdx] - 3m)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		/// <summary>
+		/// Enhanced MACD with histogram momentum analysis
+		/// </summary>
+		public static SignalValidation ValidateMACDEnhanced(
+			List<decimal> macdLine, List<decimal> signalLine, List<decimal> histogram,
+			List<decimal> prices, int idx, string direction)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 10 || histogram.Count <= idx || macdLine.Count <= idx)
+				return validation.Fail("Insufficient MACD data");
+
+			bool isBuy = direction == "Buy";
+			decimal histNow = histogram[idx];
+			decimal histPrev = histogram[idx - 1];
+			decimal histPrev2 = histogram[idx - 2];
+			decimal macdNow = macdLine[idx];
+			decimal macdPrev = macdLine[idx - 1];
+
+			// Check for zero-line crossover (strong signal)
+			bool zeroCrossover = isBuy
+				? (histNow > 0 && histPrev <= 0)
+				: (histNow < 0 && histPrev >= 0);
+
+			// Check for momentum (histogram expanding)
+			bool histMomentum = isBuy
+				? (histNow > histPrev && histPrev > histPrev2)
+				: (histNow < histPrev && histPrev < histPrev2);
+
+			// Check MACD line momentum
+			bool macdMomentum = isBuy
+				? (macdNow > macdPrev)
+				: (macdNow < macdPrev);
+
+			// Minimum histogram strength (0.1% of price)
+			decimal minHistStrength = prices[idx] * 0.001m;
+			bool hasStrength = Math.Abs(histNow) > minHistStrength;
+
+			if (!hasStrength)
+				return validation.Fail($"Histogram too weak ({Math.Abs(histNow):F4} < {minHistStrength:F4})");
+
+			// Check for whipsaw (recent opposite crossover)
+			bool recentWhipsaw = false;
+			for (int i = idx - 5; i >= Math.Max(0, idx - 10); i--)
+			{
+				if (histogram.Count <= i + 1) continue;
+				bool oppCross = isBuy
+					? (histogram[i] < 0 && histogram[i + 1] > 0)
+					: (histogram[i] > 0 && histogram[i + 1] < 0);
+				if (oppCross) { recentWhipsaw = true; break; }
+			}
+
+			if (recentWhipsaw)
+				return validation.Fail("Recent whipsaw detected - avoid");
+
+			// Score the signal
+			if (zeroCrossover && histMomentum && macdMomentum)
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.88m;
+				validation.Reason = $"MACD crossover + momentum (hist={histNow:F4})";
+			}
+			else if (zeroCrossover && histMomentum)
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.75m;
+				validation.Reason = $"MACD crossover (hist={histNow:F4})";
+			}
+			else if (histMomentum && macdMomentum && hasStrength)
+			{
+				validation.IsValid = true;
+				validation.Confidence = 0.65m;
+				validation.Reason = $"MACD momentum building (hist={histNow:F4})";
+			}
+			else
+			{
+				return validation.Fail("No clear MACD signal");
+			}
+
+			return validation;
+		}
+
+		/// <summary>
+		/// Supertrend validation optimized for swing trading
+		/// </summary>
+		public static SignalValidation ValidateSupertrendSwing(
+			List<decimal> supertrend, List<int> direction, List<decimal> closes,
+			List<decimal> atr, int idx)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 5 || direction.Count <= idx || supertrend.Count <= idx)
+				return validation.Fail("Insufficient Supertrend data");
+
+			int currentDir = direction[idx];
+			int prevDir = direction[idx - 1];
+			decimal price = closes[idx];
+			decimal stValue = supertrend[idx];
+
+			// Check for direction flip (primary signal)
+			bool directionFlip = currentDir != prevDir;
+
+			if (!directionFlip)
+			{
+				// Check for strong continuation (price well above/below supertrend)
+				decimal stDistance = Math.Abs(price - stValue) / price;
+
+				if (currentDir == 1 && stDistance > 0.02m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m;
+					validation.Reason = $"Supertrend bullish continuation ({stDistance:P2} above)";
+				}
+				else if (currentDir == -1 && stDistance > 0.02m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m;
+					validation.Reason = $"Supertrend bearish continuation ({stDistance:P2} below)";
+				}
+				else
+				{
+					return validation.Fail("No Supertrend signal");
+				}
+
+				return validation;
+			}
+
+			// Direction flip detected
+			if (currentDir == 1)
+			{
+				// Bullish flip - check it's not a false breakout
+				decimal atrValue = atr.Count > idx ? atr[idx] : 0;
+				decimal breakoutStrength = atrValue > 0 ? (price - stValue) / atrValue : 0;
+
+				if (breakoutStrength > 0.5m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.82m;
+					validation.Reason = $"Supertrend bullish flip (strength={breakoutStrength:F2}x ATR)";
+				}
+				else
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = $"Supertrend bullish flip";
+				}
+			}
+			else
+			{
+				// Bearish flip
+				decimal atrValue = atr.Count > idx ? atr[idx] : 0;
+				decimal breakdownStrength = atrValue > 0 ? (stValue - price) / atrValue : 0;
+
+				if (breakdownStrength > 0.5m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.82m;
+					validation.Reason = $"Supertrend bearish flip (strength={breakdownStrength:F2}x ATR)";
+				}
+				else
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = $"Supertrend bearish flip";
+				}
+			}
+
+			return validation;
+		}
+
+		/// <summary>
+		/// Improved CCI validation with ±100 thresholds
+		/// </summary>
+		public static SignalValidation ValidateCCISwing(List<decimal> cci, int idx, string direction)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 5 || cci.Count <= idx)
+				return validation.Fail("Insufficient CCI data");
+
+			decimal cciNow = cci[idx];
+			decimal cciPrev = cci[idx - 1];
+			decimal cciPrev2 = cci[idx - 2];
+			bool isBuy = direction == "Buy";
+
+			if (isBuy)
+			{
+				// Classic oversold recovery at -100
+				if (cciPrev <= -100m && cciNow > -100m)
+				{
+					bool momentum = cciNow > cciPrev && cciPrev > cciPrev2;
+					validation.IsValid = true;
+					validation.Confidence = momentum ? 0.80m : 0.70m;
+					validation.Reason = $"CCI oversold recovery ({cciPrev:F0} → {cciNow:F0})";
+				}
+				// Zero-line crossover (weaker signal)
+				else if (cciPrev < 0 && cciNow > 0 && cciNow > cciPrev)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m;
+					validation.Reason = $"CCI zero-line cross ({cciNow:F0})";
+				}
+				else
+				{
+					return validation.Fail($"No CCI buy signal (current={cciNow:F0})");
+				}
+			}
+			else // Sell
+			{
+				// Classic overbought reversal at +100
+				if (cciPrev >= 100m && cciNow < 100m)
+				{
+					bool momentum = cciNow < cciPrev && cciPrev < cciPrev2;
+					validation.IsValid = true;
+					validation.Confidence = momentum ? 0.80m : 0.70m;
+					validation.Reason = $"CCI overbought reversal ({cciPrev:F0} → {cciNow:F0})";
+				}
+				// Zero-line crossover (weaker signal)
+				else if (cciPrev > 0 && cciNow < 0 && cciNow < cciPrev)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m;
+					validation.Reason = $"CCI zero-line cross ({cciNow:F0})";
+				}
+				else
+				{
+					return validation.Fail($"No CCI sell signal (current={cciNow:F0})");
+				}
+			}
+
+			return validation;
+		}
+
+		/// <summary>
+		/// Volume spike validation with 1.5x threshold
+		/// </summary>
+		public static SignalValidation ValidateVolumeSpikeSwing(
+			List<decimal> volumes, List<decimal> prices, int idx, decimal spikeThreshold = 1.5m)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (volumes == null || volumes.Count <= idx || idx < 30)
+				return validation.Fail("Insufficient volume data");
+
+			decimal currentVol = volumes[idx];
+			var recentVols = volumes.Skip(idx - 30).Take(30).ToList();
+			decimal avgVol = recentVols.Average();
+			decimal medianVol = recentVols.OrderBy(v => v).ElementAt(15);
+
+			if (avgVol <= 0)
+				return validation.Fail("Invalid volume baseline");
+
+			decimal volMultiple = currentVol / avgVol;
+			decimal volVsMedian = currentVol / medianVol;
+
+			// Need both average and median to confirm (avoids single-day spikes skewing average)
+			if (volMultiple < spikeThreshold || volVsMedian < spikeThreshold * 0.8m)
+				return validation.Fail($"No volume spike ({volMultiple:F2}x avg, {volVsMedian:F2}x median)");
+
+			bool upBar = prices[idx] > prices[idx - 1];
+
+			// Calculate volume trend (increasing volume = better)
+			decimal vol3DayAvg = volumes.Skip(idx - 2).Take(3).Average();
+			decimal vol10DayAvg = volumes.Skip(idx - 9).Take(10).Average();
+			bool increasingVolume = vol3DayAvg > vol10DayAvg * 1.1m;
+
+			validation.IsValid = true;
+			validation.Confidence = Math.Min(0.60m + (volMultiple - spikeThreshold) * 0.15m, 0.90m);
+
+			if (increasingVolume)
+			{
+				validation.Confidence += 0.08m;
+				validation.Reason = $"Volume spike {volMultiple:F2}x on {(upBar ? "up" : "down")} bar + rising volume";
+			}
+			else
+			{
+				validation.Reason = $"Volume spike {volMultiple:F2}x on {(upBar ? "up" : "down")} bar";
+			}
+
+			return validation;
+		}
+
+		#endregion
+
+		#region COMPOSITE SIGNAL SCORING
+
+		/// <summary>
+		/// Composite signal quality score
+		/// Use this to filter only the best signals
+		/// </summary>
+		public class CompositeSignalScore
+		{
+			public decimal TotalScore { get; set; }
+			public bool MeetsPrimaryFilters { get; set; }
+			public int ConfirmationCount { get; set; }
+			public string[] PassedValidations { get; set; } = Array.Empty<string>();
+			public string[] FailedValidations { get; set; } = Array.Empty<string>();
+			public string Recommendation { get; set; } = "";
+
+		}
+		public static CompositeSignalScore CalculateCompositeScore(
+			SignalValidation trendStrength,
+			SignalValidation choppiness,
+			SignalValidation trendAlignment,
+			SignalValidation ema,
+			SignalValidation rsi,
+			SignalValidation macd,
+			SignalValidation supertrend,
+			SignalValidation volume)
+		{
+			var score = new CompositeSignalScore();
+			var passed = new List<string>();
+			var failed = new List<string>();
+
+			// PRIMARY FILTERS (all must pass)
+			score.MeetsPrimaryFilters =
+				trendStrength.IsValid &&
+				choppiness.IsValid &&
+				trendAlignment.IsValid;
+
+			if (!score.MeetsPrimaryFilters)
+			{
+				if (!trendStrength.IsValid) failed.Add($"TrendStrength: {trendStrength.Reason}");
+				if (!choppiness.IsValid) failed.Add($"Choppiness: {choppiness.Reason}");
+				if (!trendAlignment.IsValid) failed.Add($"TrendAlign: {trendAlignment.Reason}");
+
+				score.FailedValidations = failed.ToArray();
+				score.Recommendation = "REJECT - Primary filters not met";
+				return score;
+			}
+
+			passed.Add($"TrendStrength: {trendStrength.Confidence:P0}");
+			passed.Add($"Choppiness: {choppiness.Confidence:P0}");
+			passed.Add($"TrendAlign: {trendAlignment.Confidence:P0}");
+
+			// ENTRY SIGNAL SCORING
+			var entryValidations = new[]
+			{
+				(Name: "EMA", Val: ema, Weight: 0.20m),
+				(Name: "RSI", Val: rsi, Weight: 0.20m),
+				(Name: "MACD", Val: macd, Weight: 0.20m),
+				(Name: "Supertrend", Val: supertrend, Weight: 0.20m)
+			};
+
+			decimal entryScore = 0m;
+			int confirmations = 0;
+
+			foreach (var entry in entryValidations)
+			{
+				if (entry.Val.IsValid)
+				{
+					entryScore += entry.Val.Confidence * entry.Weight;
+					confirmations++;
+					passed.Add($"{entry.Name}: {entry.Val.Confidence:P0}");
+				}
+				else
+				{
+					failed.Add($"{entry.Name}: {entry.Val.Reason}");
+				}
+			}
+
+			// CONFIRMATION BONUS (volume)
+			if (volume.IsValid)
+			{
+				entryScore += volume.Confidence * 0.20m;
+				confirmations++;
+				passed.Add($"Volume: {volume.Confidence:P0}");
+			}
+			else
+			{
+				failed.Add($"Volume: {volume.Reason}");
+			}
+
+			// PRIMARY FILTER CONTRIBUTION (30% of total)
+			decimal primaryScore =
+				(trendStrength.Confidence * 0.12m) +
+				(choppiness.Confidence * 0.10m) +
+				(trendAlignment.Confidence * 0.08m);
+
+			score.TotalScore = primaryScore + entryScore;
+			score.ConfirmationCount = confirmations;
+			score.PassedValidations = passed.ToArray();
+			score.FailedValidations = failed.ToArray();
+
+			// RECOMMENDATION
+			if (score.TotalScore >= 0.75m && confirmations >= 4)
+			{
+				score.Recommendation = "STRONG BUY/SELL - High quality signal";
+			}
+			else if (score.TotalScore >= 0.65m && confirmations >= 3)
+			{
+				score.Recommendation = "MODERATE - Acceptable signal quality";
+			}
+			else if (score.TotalScore >= 0.55m && confirmations >= 2)
+			{
+				score.Recommendation = "WEAK - Consider smaller position size";
+			}
+			else
+			{
+				score.Recommendation = "REJECT - Insufficient confirmations";
+			}
+
+			return score;
+		}
+
+		#endregion
+
+		#region UTILITY INDICATORS TO ADD
+
+		/// <summary>
+		/// Volume Weighted Average Price - Institutional benchmark
+		/// </summary>
+		public static List<decimal> VWAPList(
+			List<decimal> highs, List<decimal> lows, List<decimal> closes, List<decimal> volumes)
+		{
+			var vwap = new List<decimal>();
+			if (closes.Count == 0 || volumes.Count != closes.Count) return vwap;
+
+			decimal cumulativeTPV = 0m;
+			decimal cumulativeVolume = 0m;
+
+			for (int i = 0; i < closes.Count; i++)
+			{
+				decimal typicalPrice = (highs[i] + lows[i] + closes[i]) / 3m;
+				cumulativeTPV += typicalPrice * volumes[i];
+				cumulativeVolume += volumes[i];
+
+				decimal vwapValue = cumulativeVolume > 0 ? cumulativeTPV / cumulativeVolume : typicalPrice;
+				vwap.Add(Math.Round(vwapValue, 4));
+			}
+
+			return vwap;
+		}
+
+		/// <summary>
+		/// VWAP validation - Price position relative to VWAP
+		/// </summary>
+		public static SignalValidation ValidateVWAP(
+			List<decimal> closes, List<decimal> vwap, int idx, string direction)
+		{
+			var validation = new SignalValidation { IsValid = false };
+
+			if (idx < 20 || vwap.Count <= idx)
+				return validation.Fail("Insufficient VWAP data");
+
+			decimal price = closes[idx];
+			decimal vwapValue = vwap[idx];
+			decimal deviation = (price - vwapValue) / vwapValue;
+			bool isBuy = direction == "Buy";
+
+			if (isBuy)
+			{
+				// For buy: price should be near or above VWAP
+				if (deviation < -0.03m) // More than 3% below VWAP
+					return validation.Fail($"Price too far below VWAP ({deviation:P2})");
+
+				if (deviation > 0.01m && deviation < 0.03m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.75m;
+					validation.Reason = $"Price above VWAP ({deviation:P2}) - institutional support";
+				}
+				else if (deviation >= -0.01m && deviation <= 0.01m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = $"Price at VWAP ({deviation:P2}) - neutral zone";
+				}
+				else
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m;
+					validation.Reason = $"Price deviation from VWAP ({deviation:P2})";
+				}
+			}
+			else // Sell
+			{
+				if (deviation > 0.03m) // More than 3% above VWAP
+					return validation.Fail($"Price too far above VWAP ({deviation:P2})");
+
+				if (deviation < -0.01m && deviation > -0.03m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.75m;
+					validation.Reason = $"Price below VWAP ({deviation:P2}) - institutional resistance";
+				}
+				else if (deviation >= -0.01m && deviation <= 0.01m)
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.70m;
+					validation.Reason = $"Price at VWAP ({deviation:P2}) - neutral zone";
+				}
+				else
+				{
+					validation.IsValid = true;
+					validation.Confidence = 0.60m;
+					validation.Reason = $"Price deviation from VWAP ({deviation:P2})";
+				}
+			}
+
+			return validation;
+		}
+
+		#endregion
 	}
 }

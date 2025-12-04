@@ -285,7 +285,7 @@ namespace TraderBotV1
 
 				foreach (var signal in buySignals.OrderByDescending(s => s.Quality))
 				{
-					string finvizUrl = $"https://finviz.com/quote.ashx?t={signal.Symbol}&p=d";
+					string stockanalysisUrl = $"https://stockanalysis.com/stocks/{signal.Symbol}/";
 					decimal stopPercent = ((signal.Entry - signal.StopLoss) / signal.Entry) * 100;
 					decimal target1Percent = ((signal.Target1 - signal.Entry) / signal.Entry) * 100;
 					decimal target2Percent = ((signal.Target2 - signal.Entry) / signal.Entry) * 100;
@@ -294,7 +294,7 @@ namespace TraderBotV1
 
 					sb.AppendLine($@"
                     <tr class='buy-signal'>
-                        <td class='symbol'><a href='{finvizUrl}' target='_blank'>{signal.Symbol}</a></td>
+                        <td class='symbol'><a href='{stockanalysisUrl}' target='_blank'>{signal.Symbol}</a></td>
                         <td class='price'>${signal.Entry:F2}</td>
                         <td>${signal.StopLoss:F2}<br><span class='targets'>-{stopPercent:F1}%</span></td>
                         <td>${signal.Target1:F2}<br><span class='targets'>+{target1Percent:F1}%</span></td>
@@ -337,7 +337,7 @@ namespace TraderBotV1
 
 				foreach (var signal in sellSignals.OrderByDescending(s => s.Quality))
 				{
-					string finvizUrl = $"https://finviz.com/quote.ashx?t={signal.Symbol}&p=d";
+					string stockanalysisUrl = $"https://stockanalysis.com/stocks/{signal.Symbol}/";
 					decimal stopPercent = ((signal.StopLoss - signal.Entry) / signal.Entry) * 100;
 					decimal target1Percent = ((signal.Entry - signal.Target1) / signal.Entry) * 100;
 					decimal target2Percent = ((signal.Entry - signal.Target2) / signal.Entry) * 100;
@@ -346,7 +346,7 @@ namespace TraderBotV1
 
 					sb.AppendLine($@"
                     <tr class='sell-signal'>
-                        <td class='symbol'><a href='{finvizUrl}' target='_blank'>{signal.Symbol}</a></td>
+                        <td class='symbol'><a href='{stockanalysisUrl}' target='_blank'>{signal.Symbol}</a></td>
                         <td class='price'>${signal.Entry:F2}</td>
                         <td>${signal.StopLoss:F2}<br><span class='targets'>+{stopPercent:F1}%</span></td>
                         <td>${signal.Target1:F2}<br><span class='targets'>+{target1Percent:F1}%</span></td>
@@ -432,7 +432,7 @@ namespace TraderBotV1
 						signal.MaxHoldDays));
 
 					sb.AppendLine($"  Reason: {signal.Reason}");
-					sb.AppendLine($"  Link: https://finviz.com/quote.ashx?t={signal.Symbol}&p=d");
+					sb.AppendLine($"  Link: https://stockanalysis.com/stocks/{signal.Symbol}/");
 					sb.AppendLine();
 				}
 			}
@@ -459,7 +459,7 @@ namespace TraderBotV1
 						signal.MaxHoldDays));
 
 					sb.AppendLine($"  Reason: {signal.Reason}");
-					sb.AppendLine($"  Link: https://finviz.com/quote.ashx?t={signal.Symbol}&p=d");
+					sb.AppendLine($"  Link: https://stockanalysis.com/stocks/{signal.Symbol}/");
 					sb.AppendLine();
 				}
 			}

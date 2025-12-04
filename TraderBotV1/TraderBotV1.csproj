@@ -14,6 +14,7 @@
     <Compile Remove="StrategiesEnhanced.cs" />
     <Compile Remove="Strategies_Extended.cs" />
     <Compile Remove="TradeEngine.cs" />
+    <Compile Remove="TradeEngineEnhanced.cs" />
     <Compile Remove="TradeLogger.cs" />
     <Compile Remove="TradeLogic.cs" />
     <Compile Remove="TradingBot.cs" />
@@ -22,6 +23,8 @@
   <ItemGroup>
     <PackageReference Include="Alpaca.Markets" Version="8.0.0-beta4" />
     <PackageReference Include="Alpaca.Markets.Extensions" Version="7.2.0" />
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.3" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.10" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />

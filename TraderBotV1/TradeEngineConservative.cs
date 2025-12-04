@@ -2,46 +2,77 @@
 using System.Collections.Generic;
 using System.Linq;
 using TraderBotV1.Data;
+using static TraderBotV1.SignalValidator;
 
 namespace TraderBotV1
 {
-	/// <summary>
-	/// BALANCED SWING TRADING ENGINE
-	/// Optimized to generate more quality signals while maintaining good win rates
-	/// 
-	/// Key Balanced Features:
-	/// 1. Moderate vote requirements (6 votes vs 7 conservative)
-	/// 2. Balanced confidence thresholds (50% vs 55% conservative)
-	/// 3. Quality requirements (48% vs 52% conservative)
-	/// 4. Wider acceptable volatility range (0.6% to 8.5%)
-	/// 5. Lower trend strength requirement (1.0% vs 1.2%)
-	/// 6. More lenient choppiness tolerance (65% vs 60%)
-	/// 7. Lower regime confidence (50% vs 55%)
-	/// 8. Relaxed validation checks for more signals
-	/// 9. Wider RSI extremes (22-78 vs 25-75)
-	/// 10. Lower momentum requirement (1.2% vs 1.5%)
-	/// </summary>
-	public class TradeEngineConservative
+	public class TradingSignal
 	{
-		private readonly SqliteStorage _db;
+		public string Symbol { get; set; } = "";
+		public string Direction { get; set; } = "";
+		public decimal Entry { get; set; }
+		public decimal StopLoss { get; set; }
+		public decimal Target1 { get; set; }
+		public decimal Target2 { get; set; }
+		public int Quantity { get; set; }
+		public decimal Confidence { get; set; }
+		public decimal Quality { get; set; }
+		public DateTime SignalDate { get; set; }
+		public int MaxHoldDays { get; set; }
+		public string Reason { get; set; } = "";
+	}
+
+	/// <summary>
+	/// ULTRA-RELAXED SWING TRADING ENGINE
+	/// Fixed for real market conditions - removes the two critical blockers
+	/// 
+	/// ⚠️ CRITICAL FIXES APPLIED:
+	/// 1. MIN_VOTES_REQUIRED: 6 → 5 (was blocking "insufficient votes")
+	/// 2. MIN_SIGNAL_GAP: 8% → 3% (was blocking "signal conflict")
+	/// 
+	/// Key Ultra-Relaxed Features:
+	/// 1. Low vote requirements (5 votes vs 6)
+	/// 2. Lower confidence thresholds (48% vs 50%)
+	/// 3. Lower quality requirements (45% vs 48%)
+	/// 4. VERY WIDE volatility range (0.4% to 12%)
+	/// 5. VERY LOW trend strength (0.5%)
+	/// 6. HIGH choppiness tolerance (75%)
+	/// 7. LOW regime confidence (40%)
+	/// 8. CRITICAL: 3% signal gap (vs 8%)
+	/// 9. CRITICAL: 50% vote dominance (vs 55%)
+	/// 10. Very low momentum requirement (0.8%)
+	/// 
+	/// Use this when: Getting "insufficient votes" or "signal conflict" messages
+	/// </summary>
+	public partial class TradeEngineConservative
+	{
+		private readonly SqlServerStorage _db;
 		private readonly decimal _riskPercent;
 		private readonly EmailNotificationService? _emailService;
 		private readonly List<TradingSignal> _sessionSignals;
 
-		// ⭐ BALANCED THRESHOLDS - Optimized for more signals with quality
-		private const int MIN_VOTES_REQUIRED = 6;              // ⭐ 6 strategies for balanced signals
-		private const decimal MIN_STRATEGY_CONFIDENCE = 0.40m; // ⭐ 40% individual strategy confidence
-		private const decimal MIN_FINAL_CONFIDENCE = 0.50m;    // ⭐ 50% average confidence
-		private const decimal MIN_QUALITY_SCORE = 0.48m;       // ⭐ 48% quality score
-		private const int MIN_STRATEGIES_FOR_ENTRY = 6;        // ⭐ 6 minimum strategies
+		private const decimal MIN_COMPOSITE_SCORE = 0.65m;
+		private const int MIN_CONFIRMATIONS = 3;
 
-		// ⭐ BALANCED: More lenient filters to allow more quality signals
-		private const decimal MIN_VOTE_DOMINANCE = 0.60m;      // ⭐ 60% vote dominance (down from 65%)
-		private const decimal MIN_TREND_STRENGTH = 0.010m;     // ⭐ 1.0% trend strength (down from 1.2%)
-		private const decimal MIN_SIGNAL_GAP = 0.10m;          // ⭐ 10% signal gap (down from 12%)
-		private const decimal MAX_CHOPPINESS = 0.65m;          // ⭐ 65% max choppiness (up from 60%)
+		private const int MIN_VOTES_REQUIRED = 7;              // Up from 5
+		private const decimal MIN_STRATEGY_CONFIDENCE = 0.50m; // Up from 0.48
+		private const decimal MIN_FINAL_CONFIDENCE = 0.50m;    // Up from 0.50
+		private const decimal MIN_QUALITY_SCORE = 0.48m;       // Up from 0.48
+		private const int MIN_STRATEGIES_FOR_ENTRY = 7;        // Up from 5
 
-		public TradeEngineConservative(SqliteStorage db, decimal riskPercent = 0.015m,
+		private const decimal MIN_VOTE_DOMINANCE = 0.50m;      // Up from 0.50Stale data
+		private const decimal MIN_TREND_STRENGTH = 0.002m;      // Up from 0.005
+		private const decimal MIN_SIGNAL_GAP = 0.01m;          // Up from 0.03
+		private const decimal MAX_CHOPPINESS = 0.65m;          // Down from 0.75
+
+		// Volatility bounds - realistic for swing trading
+		private const decimal MIN_VOLATILITY = 0.008m;         // Up from 0.004
+		private const decimal MAX_VOLATILITY = 0.06m;          // Down from 0.20
+
+		// Regime confidence
+		private const decimal MIN_REGIME_CONFIDENCE = 0.50m;   // Up from 0.40
+
+		public TradeEngineConservative(SqlServerStorage db, decimal riskPercent = 0.015m,
 			EmailNotificationService? emailService = null)
 		{
 			_db = db;
@@ -86,23 +117,20 @@ namespace TraderBotV1
 
 			var regime = Indicators.DetectMarketRegime(closes, highs, lows);
 
-			Console.WriteLine($"\n📊 {symbol} Analysis (BALANCED ENGINE):");
+			Console.WriteLine($"\n📊 {symbol} Analysis (ULTRA-RELAXED - Signal Gap Fixed):");
 			Console.WriteLine($"   Regime: {regime.Description}");
 			Console.WriteLine($"   Trend: {regime.TrendStrength:P2} | Volatility: {regime.VolatilityLevel:P2}");
 
-			// ⭐ BALANCED: Wider volatility range for more signals
-			if (regime.VolatilityLevel > 0.085m)  // ⭐ 8.5% (up from 7.5%)
+			if (regime.VolatilityLevel > MAX_VOLATILITY)  // 0.08 = 8%
 			{
-				Console.WriteLine($"❌ High volatility ({regime.VolatilityLevel:P2})");
-				_db.InsertSignal(symbol, DateTime.UtcNow, "Regime", "Hold", "High volatility");
-				return;
+				Console.WriteLine($"❌ High volatility ({regime.VolatilityLevel:P2} > {MAX_VOLATILITY:P2})");
+				return;  // Correctly BLOCKS stocks with volatility > 8%
 			}
 
-			if (regime.VolatilityLevel < 0.006m)  // ⭐ 0.6% (down from 0.8%)
+			if (regime.VolatilityLevel < MIN_VOLATILITY)  // 0.006 = 0.6%
 			{
-				Console.WriteLine($"❌ Low volatility ({regime.VolatilityLevel:P2})");
-				_db.InsertSignal(symbol, DateTime.UtcNow, "Regime", "Hold", "Low volatility");
-				return;
+				Console.WriteLine($"❌ Low volatility ({regime.VolatilityLevel:P2} < {MIN_VOLATILITY:P2})");
+				return;  // Correctly BLOCKS stocks with volatility < 0.6%
 			}
 
 			// ⭐ REALISTIC: More lenient choppiness threshold
@@ -115,8 +143,8 @@ namespace TraderBotV1
 			}
 			Console.WriteLine($"   Choppiness: {choppiness:P0} ✓");
 
-			// ⭐ BALANCED: Lower regime confidence requirement
-			if (regime.RegimeConfidence < 0.50m)  // ⭐ 50% (down from 55%)
+			// ⭐ RELAXED: Lower regime confidence requirement ⚠️ AGGRESSIVE
+			if (regime.RegimeConfidence < 0.40m)  // ⭐ 40% (down from 50%)
 			{
 				Console.WriteLine($"❌ Low regime confidence ({regime.RegimeConfidence:P0})");
 				_db.InsertSignal(symbol, DateTime.UtcNow, "Regime", "Hold", "Unclear regime");
@@ -130,9 +158,9 @@ namespace TraderBotV1
 			var mtf = Indicators.AnalyzeMultiTimeframe(closes, highs, lows);
 			Console.WriteLine($"   MTF: {mtf.CurrentTFTrend} (aligned: {mtf.IsAligned}, conf: {mtf.Confidence:P0})");
 
-			// ⭐ BALANCED: MTF alignment is BONUS, with lower threshold
+			// ⭐ RELAXED: MTF alignment is BONUS, with very low threshold
 			decimal mtfBonus = 0m;
-			if (mtf.IsAligned && mtf.Confidence >= 0.45m)  // ⭐ 45% (down from 50%)
+			if (mtf.IsAligned && mtf.Confidence >= 0.40m)  // ⭐ 40% (down from 45%) ⚠️ AGGRESSIVE
 			{
 				mtfBonus = 0.05m;  // 5% bonus if MTF aligned
 				Console.WriteLine($"   ✅ MTF Bonus: +5%");
@@ -162,6 +190,34 @@ namespace TraderBotV1
 			Console.WriteLine($"   ✅ Trend: {(context.IsUptrend ? "UP" : "DOWN")} @ {context.TrendStrength:P2}");
 
 			// ═══════════════════════════════════════════════════════════════
+			// STEP 3.5: PRIMARY FILTERS (HIGH WIN-RATE GATE CHECK)
+			// ═══════════════════════════════════════════════════════════════
+
+			Console.WriteLine($"\n🎯 Applying Primary Filters...");
+
+			var primaryFilter = Strategies.PrimaryFilters(closes, highs, lows);
+
+			if (primaryFilter.Signal == "Hold")
+			{
+				Console.WriteLine($"❌ PRIMARY FILTER FAILED: {primaryFilter.Reason}");
+				_db.InsertSignal(symbol, DateTime.UtcNow, "PrimaryFilter", "Hold", primaryFilter.Reason);
+				return;
+			}
+
+			string allowedDirection = primaryFilter.Signal; // "Buy" or "Sell"
+			decimal primaryConfidence = primaryFilter.Strength;
+
+			Console.WriteLine($"   ✅ Primary Filter Passed: {allowedDirection}");
+			Console.WriteLine($"   ✅ {primaryFilter.Reason}");
+			Console.WriteLine($"   ✅ Market Direction Locked: {allowedDirection}");
+
+			// ═══════════════════════════════════════════════════════════════════════════
+			// MODIFICATION #2: Filter Strategy Votes by Allowed Direction
+			// Location: In STEP 6 (around line 237)
+			// REPLACE the existing buySignals and sellSignals with this:
+			// ═══════════════════════════════════════════════════════════════════════════
+
+			// ═══════════════════════════════════════════════════════════════
 			// STEP 4: CALCULATE INDICATORS
 			// ═══════════════════════════════════════════════════════════════
 
@@ -180,21 +236,23 @@ namespace TraderBotV1
 			var s2 = Strategies.MeanReversionSR(closes, highs, lows, volumes);
 			var s3 = Strategies.BreakoutWithVolume(opens, closes, highs, lows, volumes);
 			var s4 = Strategies.MomentumReversalDivergence(closes, highs, lows, volumes);
-			var s5 = Strategies.EmaRsi(closes, 20, 50, 14);
+			var s5 = Strategies.EmaRsiEnhanced(closes, highs, lows, 20, 50, 14);
 			var s6 = Strategies.BollingerMeanReversion(closes, bbU, bbL, bbM, 14);
 			var s7 = Strategies.AtrBreakout(closes, highs, lows, atr, 20, 50, 14);
-			var s8 = Strategies.MacdDivergence(closes, macd, macdSig, macdHist);
-			var s9 = Strategies.AdxFilter(highs, lows, closes, 14, 20m);  // ⭐ 20 (down from 23)
-			var s10 = Strategies.VolumeConfirm(closes, volumes, 30, 1.0m);  // ⭐ 1.0x (down from 1.1x)
+			var s8 = Strategies.MacdDivergenceEnhanced(closes, macd, macdSig, macdHist);
+			//ADX of 18 indicates weak trend. Swing trades need ADX > 22.
+			var s9 = Strategies.AdxFilter(highs, lows, closes, 14, 22m);  // ⭐ 18 (down from 20) ⚠️ AGGRESSIVE
+			//1.0x average volume is NOT a volume spike. It's just average volume.
+			var s10 = Strategies.VolumeConfirm(closes, volumes, 30, 1.3m);  // ⭐ 1.0x (down from 1.1x)
 			var s11 = Strategies.DonchianBreakout(highs, lows, closes, 25);
-			var s12 = Strategies.VWAPStrategy(closes, highs, lows, volumes);
+			//var s12 = Strategies.VWAPStrategy(closes, highs, lows, volumes);
 			var s13 = Strategies.IchimokuCloud(closes, highs, lows);
 			var s14 = Strategies.PriceActionTrend(closes, highs, lows);
-			var s15 = Strategies.SupertrendStrategy(highs, lows, closes, 10, 3m);
+			var s15 = Strategies.SupertrendStrategyEnhanced(highs, lows, closes, 14, 2.5m);
 			var s16 = Strategies.MeanReversionMFI(closes, highs, lows, volumes, 14, 20);
 			var s17 = Strategies.TripleMomentumStrategy(closes, highs, lows, volumes, 12);
 			var s18 = Strategies.SupportResistanceBounce(closes, highs, lows, volumes);
-			var s19 = Strategies.GapTradingStrategy(opens, closes, highs, lows, volumes, 0.005m);
+			//var s19 = Strategies.GapTradingStrategy(opens, closes, highs, lows, volumes, 0.005m);
 			var s20 = Strategies.CMFMomentumStrategy(closes, highs, lows, volumes, 20);
 			var s21 = Strategies.ForceIndexBreakout(closes, volumes, 13);
 			var s22 = Strategies.WilliamsRReversal(highs, lows, closes, 14);
@@ -214,40 +272,86 @@ namespace TraderBotV1
 			var s36 = Strategies.LinearRegressionBreakout(closes, volumes);
 			var s37 = Strategies.HeikinAshiTrend(opens, highs, lows, closes);
 			var s38 = Strategies.FibonacciRetracement(highs, lows, closes);
+			// Add new strategies:
+			//var s39 = Strategies.VWAPSwingStrategy(closes, highs, lows, volumes);
+			
+			var s40 = Strategies.LinearRegressionSwingStrategy(closes, 20, 2m);
+			var s41 = Strategies.MultiFilterConfirmation(closes, highs, lows);
+			var s42 = Strategies.CCISwingStrategy(highs, lows, closes, 20);
 
 			var allSignals = new List<(StrategySignal signal, int index)> {
-				(s1,0), (s2,1), (s3,2), (s4,3), (s5,4), (s6,5), (s7,6), (s8,7), (s9,8), (s10,9),
-				(s11,10), (s12,11), (s13,12), (s14,13), (s15,14), (s16,15), (s17,16), (s18,17),
-				(s19,18), (s20,19),(s21,20), (s22,21), (s23,22), (s24,23), (s25,24), (s26,25),
+				(s1,0), (s2,1), (s3,2), (s4,3), (s5,4), (s6,5), (s7,6), (s8,7), (s9,8), (s10,9),(s11,10), 
+				//(s12,11), 
+				(s13,12), (s14,13), (s15,14), (s16,15), (s17,16), (s18,17),
+				//(s19,18), 
+				(s20,19),(s21,20), (s22,21), (s23,22), (s24,23), (s25,24), (s26,25),
 				(s27,26), (s28,27), (s29,28), (s30,29),
-				(s31,30), (s32,31), (s33,32), (s34,33), (s35,34), (s36,35), (s37,36), (s38,37)
+				(s31,30), (s32,31), (s33,32), (s34,33), (s35,34), (s36,35), (s37,36), (s38,37),
+				//(s39, 38), 
+				(s40, 39), (s41, 40), (s42, 41)
 			};
 
 			// ═══════════════════════════════════════════════════════════════
 			// STEP 6: VOTE COUNTING
 			// ═══════════════════════════════════════════════════════════════
 
-			// ⭐ REALISTIC: Slightly lower confidence threshold
+			// ⭐ ENHANCED: Only count strategies matching primary filter direction
 			var buySignals = allSignals
-				.Where(s => s.signal.Signal == "Buy" && s.signal.Strength >= MIN_STRATEGY_CONFIDENCE)
+				.Where(s => s.signal.Signal == "Buy" &&
+							s.signal.Strength >= MIN_STRATEGY_CONFIDENCE &&
+							allowedDirection == "Buy")  // ⭐ NEW: Must match primary filter
 				.ToList();
 
 			var sellSignals = allSignals
-				.Where(s => s.signal.Signal == "Sell" && s.signal.Strength >= MIN_STRATEGY_CONFIDENCE)
+				.Where(s => s.signal.Signal == "Sell" &&
+							s.signal.Strength >= MIN_STRATEGY_CONFIDENCE &&
+							allowedDirection == "Sell")  // ⭐ NEW: Must match primary filter
 				.ToList();
+
 
 			decimal CalculateWeightedConfidence(List<(StrategySignal signal, int index)> signals)
 			{
 				if (signals.Count == 0) return 0m;
+
+				// Swing-optimized weights
+				var swingWeights = new Dictionary<int, decimal>
+	{
+		// HIGH WEIGHT - Excellent for swing
+		{0, 1.5m},   // TrendFollowingMTF
+		{4, 1.4m},   // EmaRsiEnhanced
+		{7, 1.3m},   // MacdDivergenceEnhanced
+		{12, 1.4m},  // IchimokuCloud
+		{14, 1.3m},  // SupertrendEnhanced
+		{31, 1.4m},  // ElderTripleScreen
+		{34, 1.5m},  // WeeklyTrendFilter
+		
+		// MEDIUM WEIGHT - Good for swing
+		{3, 1.2m},   // MomentumReversalDivergence
+		{5, 1.1m},   // BollingerMeanReversion
+		{10, 1.1m},  // DonchianBreakout
+		{24, 1.1m},  // OBVDivergence
+		{32, 1.2m},  // ElderRayStrategy
+		{40, 1.2m},  // MultiFilterConfirmation
+		
+		// REDUCED WEIGHT - Less suitable for swing
+		{11, 0.5m},  // VWAPStrategy
+		{18, 0.3m},  // GapTradingStrategy
+		{20, 0.7m},  // ForceIndexBreakout
+		{26, 0.7m},  // RocMomentumBurst
+		{38, 0.5m},  // VWAPSwingStrategy
+	};
+
 				decimal totalWeight = 0m;
 				decimal weightedSum = 0m;
+
 				foreach (var (signal, index) in signals)
 				{
-					decimal weight = index < 4 ? 1.2m : 1.0m;
+					decimal weight = swingWeights.GetValueOrDefault(index, 1.0m);
 					weightedSum += signal.Strength * weight;
 					totalWeight += weight;
 				}
-				return weightedSum / totalWeight;
+
+				return totalWeight > 0 ? weightedSum / totalWeight : 0m;
 			}
 
 			decimal avgBuyConfidence = CalculateWeightedConfidence(buySignals);
@@ -255,7 +359,15 @@ namespace TraderBotV1
 			int buyVotes = buySignals.Count;
 			int sellVotes = sellSignals.Count;
 
-			Console.WriteLine($"\n🔍 Votes: Buy={buyVotes}@{avgBuyConfidence:P0} | Sell={sellVotes}@{avgSellConfidence:P0}");
+			// ═══════════════════════════════════════════════════════════════════════════
+			// MODIFICATION #3: Add Enhanced Diagnostics (OPTIONAL)
+			// Location: After vote counting (around line 264)
+			// Add this to see what strategies are voting:
+			// ═══════════════════════════════════════════════════════════════════════════
+
+			Console.WriteLine($"\n🔍 Vote Analysis (Direction: {allowedDirection}):");
+			Console.WriteLine($"   Buy Votes: {buyVotes} @ {avgBuyConfidence:P0}");
+			Console.WriteLine($"   Sell Votes: {sellVotes} @ {avgSellConfidence:P0}");
 			Console.WriteLine($"   Need: {MIN_VOTES_REQUIRED} votes @ {MIN_FINAL_CONFIDENCE:P0}");
 
 			//// ⭐ DIAGNOSTIC: Show why rejected
@@ -294,6 +406,47 @@ namespace TraderBotV1
 			}
 
 			// ═══════════════════════════════════════════════════════════════
+			// STEP 7.5: COMPOSITE SIGNAL QUALITY SCORE
+			// ═══════════════════════════════════════════════════════════════
+
+			CompositeSignalScore? compositeScore = null;
+
+			if (preliminaryDirection != "Hold")
+			{
+				Console.WriteLine($"\n📊 Calculating Composite Signal Score...");
+
+				compositeScore = CalculateCompositeSignalScore(
+					closes, highs, lows, volumes, preliminaryDirection, idx);
+
+				Console.WriteLine($"   Total Score: {compositeScore.TotalScore:P0}");
+				Console.WriteLine($"   Confirmations: {compositeScore.ConfirmationCount}/8");
+				Console.WriteLine($"   Recommendation: {compositeScore.Recommendation}");
+				Console.WriteLine($"   Primary Filters: {compositeScore.MeetsPrimaryFilters}");
+
+				// Show what passed
+				if (compositeScore.PassedValidations.Length > 0)
+				{
+					Console.WriteLine($"   ✅ Passed ({compositeScore.PassedValidations.Length}):");
+					foreach (var passed in compositeScore.PassedValidations.Take(5))
+					{
+						Console.WriteLine($"      • {passed}");
+					}
+				}
+
+				// Show what failed (if any)
+				if (compositeScore.FailedValidations.Length > 0 &&
+					compositeScore.FailedValidations.Length <= 3)
+				{
+					Console.WriteLine($"   ❌ Failed ({compositeScore.FailedValidations.Length}):");
+					foreach (var failed in compositeScore.FailedValidations)
+					{
+						Console.WriteLine($"      • {failed}");
+					}
+				}
+			}
+
+
+			// ═══════════════════════════════════════════════════════════════
 			// STEP 8: FINAL DECISION
 			// ═══════════════════════════════════════════════════════════════
 
@@ -305,8 +458,26 @@ namespace TraderBotV1
 			{
 				if (!context.IsUptrend)
 				{
-					Console.WriteLine($"❌ Buy in non-uptrend");
+					Console.WriteLine($"❌ Buy signal in non-uptrend");
 					finalReason = "Buy but not uptrend";
+				}
+				// ⭐ NEW: Use composite score for quality check
+				else if (compositeScore != null && compositeScore.TotalScore < MIN_COMPOSITE_SCORE)
+				{
+					Console.WriteLine($"❌ Composite score too low ({compositeScore.TotalScore:P0} < {MIN_COMPOSITE_SCORE})");
+					finalReason = compositeScore.Recommendation;
+				}
+				// ⭐ NEW: Require minimum confirmations
+				else if (compositeScore != null && compositeScore.ConfirmationCount < MIN_CONFIRMATIONS)
+				{
+					Console.WriteLine($"❌ Insufficient confirmations ({compositeScore.ConfirmationCount} < {MIN_CONFIRMATIONS})");
+					finalReason = $"Only {compositeScore.ConfirmationCount} confirmations";
+				}
+				// ⭐ NEW: Primary filters must pass
+				else if (compositeScore != null && !compositeScore.MeetsPrimaryFilters)
+				{
+					Console.WriteLine($"❌ Primary filters not met");
+					finalReason = "Primary filters failed";
 				}
 				else if (qualityScore < MIN_QUALITY_SCORE)
 				{
@@ -322,6 +493,7 @@ namespace TraderBotV1
 					bool hasCoreConfirmation = buySignals.Any(s => s.index <= 8);
 
 					decimal voteDominance = (decimal)buyVotes / (buyVotes + sellVotes);
+
 					if (voteDominance < MIN_VOTE_DOMINANCE)
 					{
 						Console.WriteLine($"❌ Vote dominance ({voteDominance:P0})");
@@ -335,9 +507,28 @@ namespace TraderBotV1
 					else if (isValid)
 					{
 						finalSignal = "Buy";
-						finalConfidence = Math.Min(avgBuyConfidence + mtfBonus, 1.0m);
-						finalReason = $"Buy: {buyVotes}@{avgBuyConfidence:P0} Q:{qualityScore:P0}";
-						Console.WriteLine($"   ✅ SIGNAL APPROVED");
+
+						// ⭐ NEW: Use composite score as final confidence
+						finalConfidence = compositeScore != null
+							? Math.Min(compositeScore.TotalScore + mtfBonus + primaryConfidence * 0.1m, 1.0m)
+							: Math.Min(avgBuyConfidence + mtfBonus, 1.0m);
+
+						finalReason = compositeScore != null
+							? $"✅ BUY: {buyVotes} votes, Composite={compositeScore.TotalScore:P0}, Confirms={compositeScore.ConfirmationCount}"
+							: $"Buy: {buyVotes} votes @ {avgBuyConfidence:P0}, Q:{qualityScore:P0}";
+
+						Console.WriteLine($"\n   ═══════════════════════════════════════");
+						Console.WriteLine($"   ✅ SIGNAL APPROVED: BUY");
+						Console.WriteLine($"   ═══════════════════════════════════════");
+						Console.WriteLine($"   Confidence: {finalConfidence:P0}");
+						Console.WriteLine($"   Votes: {buyVotes} Buy vs {sellVotes} Sell");
+						Console.WriteLine($"   Quality: {qualityScore:P0}");
+						if (compositeScore != null)
+						{
+							Console.WriteLine($"   Composite: {compositeScore.TotalScore:P0}");
+							Console.WriteLine($"   Confirmations: {compositeScore.ConfirmationCount}");
+						}
+						Console.WriteLine($"   ═══════════════════════════════════════");
 					}
 					else
 					{
@@ -464,12 +655,12 @@ namespace TraderBotV1
 				decimal trendMultiplier = context.TrendStrength > 0.02m ? 1.2m : 1.0m;
 
 				decimal profitTarget1 = finalSignal == "Buy"
-					? entry + (stopDistance * 2.5m * trendMultiplier)
-					: entry - (stopDistance * 2.5m * trendMultiplier);
+					? entry + (stopDistance * 2.0m * trendMultiplier)
+					: entry - (stopDistance * 2.0m * trendMultiplier);
 
 				decimal profitTarget2 = finalSignal == "Buy"
-					? entry + (stopDistance * 4.0m * trendMultiplier)
-					: entry - (stopDistance * 4.0m * trendMultiplier);
+					? entry + (stopDistance * 3.0m * trendMultiplier)
+					: entry - (stopDistance * 3.0m * trendMultiplier);
 
 				decimal stopLoss = finalSignal == "Buy"
 					? entry - stopDistance
@@ -507,7 +698,7 @@ namespace TraderBotV1
 			else
 			{
 				Console.WriteLine($"\n⏸️  HOLD: {finalReason}");
-				_db.InsertSignal(symbol, lastBarDate, "BalancedEngine", "Hold", finalReason);
+				_db.InsertSignal(symbol, lastBarDate, "RelaxedEngine", "Hold", finalReason);
 			}
 
 			// Detailed logging
@@ -516,17 +707,18 @@ namespace TraderBotV1
 				{ "TrendMTF", s1 }, { "MeanRevSR", s2 }, { "BreakoutVol", s3 },
 				{ "MomentumDiv", s4 }, { "EMA+RSI", s5 }, { "Bollinger", s6 },
 				{ "ATR", s7 }, { "MACD", s8 }, { "ADX", s9 }, { "Volume", s10 },
-				{ "Donchian", s11 }, { "VWAP", s12 }, { "Ichimoku", s13 },
+				{ "Donchian", s11 }, 
+				//{ "VWAP", s12 }, 
+				{ "Ichimoku", s13 },
 				{ "PriceAction", s14 },
 				{ "Supertrend", s15 }, { "MeanRevMFI", s16 }, { "TripleMomentum", s17 },
-				{ "SRBounce", s18 }, { "GapTrading", s19 }, { "CMFMomentum", s20 },
+				{ "SRBounce", s18 }, 
+				//{ "GapTrading", s19 }, 
+				{ "CMFMomentum", s20 },
 				{ "ForceIndex", s21 },
 				{ "WilliamsR", s22 }, { "PSAR", s23 }, { "Keltner", s24 },
 				{ "OBV", s25 }, { "Aroon", s26 }, { "ROC", s27 },
-				{ "TSI", s28 }, { "Vortex", s29 }, { "Confluence", s30 },
-				{ "VolatilitySqueeze", s31 }, { "ElderTripleScreen", s32 },
-				{ "ElderRay", s33 }, { "Choppiness", s34 }, { "WeeklyTrend", s35 },
-				{ "LinRegBreakout", s36 }, { "HeikinAshi", s37 }, { "Fibonacci", s38 }
+				{ "TSI", s28 }, { "Vortex", s29 }, { "Confluence", s30 }
 			});
 
 			_db.InsertSignal(symbol, DateTime.UtcNow, "Enhanced_Consensus", finalSignal,
@@ -537,7 +729,7 @@ namespace TraderBotV1
 				_db.InsertSignal(symbol, DateTime.UtcNow, "Enhanced_Entry", finalSignal,
 					$"entry=${entry:F2}, qty={qty:F0}, stop=${stopDistance:F2}, quality={qualityScore:P0}");
 
-				_db.InsertTrade(symbol, DateTime.UtcNow, finalSignal, (long)qty, entry, finalConfidence, qualityScore, lastBarDate);
+				_db.InsertTrade(symbol, DateTime.UtcNow, lastBarDate,finalSignal, (long)qty, entry, (long)qty* entry, finalConfidence, qualityScore);
 			}
 		}
 
@@ -556,37 +748,37 @@ namespace TraderBotV1
 		{
 			int idx = closes.Count - 1;
 
-			// ⭐ BALANCED: Only critical validation checks
+			// ⭐ RELAXED: Minimal validation checks ⚠️ AGGRESSIVE
 
-			// 1. EMA separation (0.8% minimum instead of 1%)
+			// 1. EMA separation (0.5% minimum - very lenient)
 			var ema20 = Indicators.EMAList(closes, 20);
 			var ema50 = Indicators.EMAList(closes, 50);
 			decimal emaSeparation = Math.Abs(ema20[idx] - ema50[idx]) / ema50[idx];
 
-			if (emaSeparation < 0.008m)  // ⭐ 0.8% (down from 1%)
+			if (emaSeparation < 0.005m)  // ⭐ 0.5% (down from 0.8%) ⚠️ AGGRESSIVE
 			{
 				Console.WriteLine($"   ❌ EMA too close ({emaSeparation:P2})");
 				return false;
 			}
 
-			// 2. RSI not extreme wrong direction (wider range for more signals)
+			// 2. RSI not extreme wrong direction (very wide range) ⚠️ AGGRESSIVE
 			var rsi = Indicators.RSIList(closes, 14);
 			if (rsi.Count > 0)
 			{
 				decimal rsiVal = rsi[^1];
-				if (direction == "Buy" && rsiVal > 78m)  // ⭐ 78 (up from 75)
+				if (direction == "Buy" && rsiVal > 80m)  // ⭐ 80 (up from 78) ⚠️ AGGRESSIVE
 				{
 					Console.WriteLine($"   ❌ RSI too high ({rsiVal:F0})");
 					return false;
 				}
-				if (direction == "Sell" && rsiVal < 22m)  // ⭐ 22 (down from 25)
+				if (direction == "Sell" && rsiVal < 20m)  // ⭐ 20 (down from 22) ⚠️ AGGRESSIVE
 				{
 					Console.WriteLine($"   ❌ RSI too low ({rsiVal:F0})");
 					return false;
 				}
 			}
 
-			// 3. Recent momentum (7-day with lower threshold)
+			// 3. Recent momentum (7-day with very low threshold) ⚠️ AGGRESSIVE
 			if (idx >= 7)
 			{
 				decimal price7DaysAgo = closes[idx - 7];
@@ -595,20 +787,20 @@ namespace TraderBotV1
 				bool momentumMatch = (direction == "Buy" && momentum7D > 0) ||
 									(direction == "Sell" && momentum7D < 0);
 
-				if (!momentumMatch || Math.Abs(momentum7D) < 0.012m)  // ⭐ 1.2% (down from 1.5%)
+				if (!momentumMatch || Math.Abs(momentum7D) < 0.008m)  // ⭐ 0.8% (down from 1.2%) ⚠️ AGGRESSIVE
 				{
 					Console.WriteLine($"   ❌ Weak momentum ({momentum7D:P2})");
 					return false;
 				}
 			}
 
-			// 4. Volume declining check (more lenient)
+			// 4. Volume declining check (very lenient) ⚠️ AGGRESSIVE
 			if (volumes.Count > 20 && idx >= 20)
 			{
 				var avg5 = volumes.Skip(idx - 5).Take(5).Average();
 				var avg20 = volumes.Skip(idx - 20).Take(20).Average();
 
-				if (avg5 < avg20 * 0.6m)  // ⭐ 60% (down from 70%)
+				if (avg5 < avg20 * 0.5m)  // ⭐ 50% (down from 60%) ⚠️ AGGRESSIVE
 				{
 					Console.WriteLine($"   ❌ Volume declining ({avg5 / avg20:P0})");
 					return false;
@@ -646,6 +838,62 @@ namespace TraderBotV1
 			return Math.Min(Math.Max(chop / 100m, 0m), 1m);
 		}
 
+		/// <summary>
+		/// Calculate comprehensive composite signal score
+		/// Returns detailed breakdown of signal quality
+		/// </summary>
+		private SignalValidator.CompositeSignalScore CalculateCompositeSignalScore(
+			List<decimal> closes,
+			List<decimal> highs,
+			List<decimal> lows,
+			List<decimal> volumes,
+			string direction,
+			int idx)
+		{
+			// Calculate all required indicators
+			var (adx, diPlus, diMinus) = Indicators.ADXList(highs, lows, closes, 14);
+			var choppiness = Indicators.ChoppinessIndex(highs, lows, closes, 14);
+			var ema50 = Indicators.EMAList(closes, 50);
+			var ema200 = closes.Count >= 200 ? Indicators.EMAList(closes, 200) : ema50;
+			var emaFast = Indicators.EMAList(closes, 20);
+			var emaSlow = Indicators.EMAList(closes, 50);
+			var rsiList = Indicators.RSIList(closes, 14);
+			var (macd, signal, hist) = Indicators.MACDSeries(closes);
+			var (supertrend, stDir) = Indicators.SupertrendList(highs, lows, closes, 14, 2.5m);
+			var atr = Indicators.ATRList(highs, lows, closes, 14);
+
+			// PRIMARY FILTERS
+			var trendStrength = SignalValidator.ValidateTrendStrength(
+				adx, diPlus, diMinus, idx, direction);
+
+			var choppyFilter = SignalValidator.ValidateChoppinessFilter(
+				choppiness, idx);
+
+			var trendAlign = SignalValidator.ValidateTrendAlignment(
+				closes, ema50, ema200, idx, direction);
+
+			// ENTRY SIGNALS
+			var emaValid = SignalValidator.ValidateEMACrossover(
+				closes, emaFast, emaSlow, idx, direction);
+
+			var rsiValid = SignalValidator.ValidateRSIWithDivergence(
+				rsiList, closes, idx, direction);
+
+			var macdValid = SignalValidator.ValidateMACDEnhanced(
+				macd, signal, hist, closes, idx, direction);
+
+			var stValid = SignalValidator.ValidateSupertrendSwing(
+				supertrend, stDir, closes, atr, idx);
+
+			// CONFIRMATION
+			var volumeValid = SignalValidator.ValidateVolumeSpikeSwing(
+				volumes, closes, idx, 1.5m);
+
+			// Calculate composite score using the new method
+			return SignalValidator.CalculateCompositeScore(
+				trendStrength, choppyFilter, trendAlign,
+				emaValid, rsiValid, macdValid, stValid, volumeValid);
+		}
 		private StrategySignal Hold(string reason) => new("Hold", 0m, reason);
 
 
@@ -657,7 +905,7 @@ namespace TraderBotV1
 				return;
 			}
 			// ⭐ BALANCED: Send signals with 60%+ confidence
-			var buySignals = _sessionSignals.Where(s => s.Direction == "Buy" && s.Confidence > .65m).ToList();
+			var buySignals = _sessionSignals.Where(s => s.Direction == "Buy" && s.Confidence > .7m).ToList();
 
 			if (buySignals.Count == 0)
 			{

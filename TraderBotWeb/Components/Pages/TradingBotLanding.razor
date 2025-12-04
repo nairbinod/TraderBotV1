@@ -1,0 +1,442 @@
+@page "/"
+
+@using System.ComponentModel.DataAnnotations
+@using System.Threading.Tasks
+
+<HeadContent>
+    <title>AI Trading Bot - Daily Buy Recommendations with Confidence Scores</title>
+    <meta name="description" content="Get daily AI-powered stock buy recommendations with confidence and quality ratings. Subscribe to receive high-probability trading signals directly to your inbox." />
+    <meta name="keywords" content="trading bot, stock recommendations, AI trading signals, buy signals, algorithmic trading" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</HeadContent>
+
+<main class="container py-4 py-md-5">
+    <header class="row align-items-center mb-5">
+        <div class="col-12 col-lg-7">
+            <span class="badge bg-success-subtle text-success mb-3">
+                <i class="fas fa-robot me-2"></i>AI-Powered Signals
+            </span>
+            <h1 class="display-5 fw-bold mb-3">
+                Trade smarter with daily AI buy recommendations
+            </h1>
+            <p class="lead text-muted mb-4">
+                TradingBot scans the markets every day to deliver high-confidence buy opportunities,
+                complete with confidence scores and quality ratings so you can act with clarity.
+            </p>
+            <div class="d-flex flex-column flex-sm-row gap-3">
+                <a href="#subscribe" class="btn btn-primary btn-lg">
+                    <i class="fas fa-bell me-2"></i>Subscribe to Recommendations
+                </a>
+                <a href="#recommendations" class="btn btn-outline-secondary btn-lg">
+                    <i class="fas fa-chart-line me-2"></i>View Today&apos;s Signals
+                </a>
+            </div>
+            <div class="mt-3 text-muted small">
+                No spam. Cancel anytime. Daily email with top opportunities only.
+            </div>
+        </div>
+        <div class="col-12 col-lg-5 mt-4 mt-lg-0">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">
+                        <i class="fas fa-bolt text-warning me-2"></i>Today&apos;s Snapshot
+                    </h2>
+                    <ul class="list-unstyled mb-0">
+                        <li class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted">Signals generated</span>
+                            <span class="fw-semibold">@todaySummary.TotalSignals</span>
+                        </li>
+                        <li class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted">Average confidence</span>
+                            <span class="fw-semibold">@todaySummary.AverageConfidence.ToString("P0")</span>
+                        </li>
+                        <li class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted">High-quality setups</span>
+                            <span class="fw-semibold text-success">
+                                <i class="fas fa-arrow-up me-1"></i>@todaySummary.HighQualityCount
+                            </span>
+                        </li>
+                        <li class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted">Markets scanned</span>
+                            <span class="fw-semibold">@todaySummary.MarketsScanned</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="mb-5" aria-label="Why use TradingBot">
+        <div class="row g-4">
+            <div class="col-12 col-md-4">
+                <div class="h-100 p-3 border rounded-3">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-brain text-primary me-2 fs-4"></i>
+                        <h2 class="h5 mb-0">AI-first engine</h2>
+                    </div>
+                    <p class="text-muted mb-0">
+                        Our models analyze price action, volume, and momentum to surface statistically
+                        strong buy candidates every trading day.
+                    </p>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="h-100 p-3 border rounded-3">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-signal text-success me-2 fs-4"></i>
+                        <h2 class="h5 mb-0">Clear confidence scores</h2>
+                    </div>
+                    <p class="text-muted mb-0">
+                        Every recommendation includes a confidence percentage and quality label
+                        so you can quickly prioritize entries.
+                    </p>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="h-100 p-3 border rounded-3">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-envelope-open-text text-warning me-2 fs-4"></i>
+                        <h2 class="h5 mb-0">Actionable alerts</h2>
+                    </div>
+                    <p class="text-muted mb-0">
+                        Subscribe to receive curated signals in your inbox before the market opens
+                        so you&apos;re always prepared.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="recommendations" class="mb-5" aria-label="Buy recommendations">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3">
+            <div>
+                <h2 class="h4 mb-1">Today&apos;s buy recommendations</h2>
+                <p class="text-muted mb-0">
+                    Filtered list of symbols with the strongest buy signals based on today&apos;s data.
+                </p>
+            </div>
+            <div class="mt-3 mt-md-0">
+                <span class="badge bg-light text-secondary">
+                    <i class="fas fa-calendar-day me-1"></i>@DateTime.Today.ToString("dddd, MMM d")
+                </span>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col">Day</th>
+                        <th scope="col">Symbol</th>
+                        <th scope="col">Confidence</th>
+                        <th scope="col">Quality</th>
+                        <th scope="col">Performance</th>
+                        <th scope="col">Suggested Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (recommendations.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-4">
+                                No recommendations available yet. Check back soon or subscribe to be notified.
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var rec in recommendations)
+                        {
+                            var badgeClass = GetQualityBadgeClass(rec.Quality.ToString());
+                            <tr>
+                                <td>@rec.DayLabel</td>
+                                <td class="fw-semibold">
+                                    @rec.Symbol
+                                    <span class="text-muted small d-block d-md-inline ms-md-1">
+                                        @rec.Market
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="flex-grow-1 me-2">
+                                            <div class="progress" style="height: 6px;">
+                                                <div class="progress-bar bg-success"
+                                                     role="progressbar"
+                                                     style="width: @(rec.Confidence * 100)%;"
+                                                     aria-valuenow="@(rec.Confidence * 100)"
+                                                     aria-valuemin="0"
+                                                     aria-valuemax="100">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <span class="small fw-semibold">
+                                            @rec.Confidence.ToString("P0")
+                                        </span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="@badgeClass">
+                                        @rec.Quality.ToString("P0")
+                                    </span>
+                                </td>
+                                <td class="text-nowrap">
+                                    <span class="@GetPerformanceClass(rec) fw-semibold">
+                                        @GetPerformanceText(rec)
+                                    </span>
+                                    <div class="small text-muted d-block">
+                                        @if (rec.Price > 0)
+                                        {
+                                            <span>@rec.Price.ToString("C") → @rec.CurrentPrice.ToString("C")</span>
+                                        }
+                                        else
+                                        {
+                                            <span>-</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <button class="btn btn-outline-primary btn-sm" @onclick="(() => LoadTradeHistoryForSymbol(rec.Symbol))">
+                                        <i class="fas fa-arrow-circle-up me-1"></i>View setup
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="text-center mt-3">
+            <p class="text-muted small mb-1">
+                These recommendations are generated for educational purposes only and are not financial advice.
+            </p>
+        </div>
+
+
+        <!-- Master / detail historic performance -->
+        <div class="card mt-4">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+                    <div class="d-flex gap-2 align-items-center">
+                        <label class="mb-0 small text-muted">Symbol</label>
+                        <InputSelect @bind-Value="selectedSymbol" class="form-select form-select-sm" style="width:140px;">
+                            <option value="">--Select--</option>
+                            @foreach (var s in recommendations.Select(r => r.Symbol).Distinct())
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="d-flex gap-2 align-items-center">
+                        <label class="mb-0 small text-muted">From</label>
+                        <InputDate @bind-Value="historyFrom" class="form-control form-control-sm" />
+                        <label class="mb-0 small text-muted ms-2">To</label>
+                        <InputDate @bind-Value="historyTo" class="form-control form-control-sm" />
+                        <button class="btn btn-sm btn-outline-primary ms-2" @onclick="LoadTradeHistory">
+                            <i class="fas fa-chart-area me-1"></i> Show
+                        </button>
+                    </div>
+                </div>
+
+                @if (tradeHistory.Count > 0)
+                {
+                    <div class="mt-3">
+                        <h6 class="mb-2">Trade history (@selectedSymbol) — @historyFrom.ToString("yyyy-MM-dd") to @historyTo.ToString("yyyy-MM-dd")</h6>
+                        <div class="small text-muted mb-2">
+                            Trades: @tradeHistory.Count | Total Value: @tradeHistory.Sum(t => t.TotalValue).ToString("C")
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-12 col-lg-8">
+                                <div class="table-responsive" style="max-height:540px; overflow:auto;">
+                                    <table class="table table-sm table-hover">
+                                        <thead class="table-light position-sticky top-0">
+                                            <tr>
+                                                <th>Symbol</th>
+                                                <th>Recommended On</th>
+                                                <th>Recommended Price</th>
+                                                <th>Confidence</th>
+                                                <th>Quality</th>
+                                                <th>Current Price</th>
+                                                <th>Qty</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var h in tradeHistory)
+                                            {
+                                                var badgeClass = GetQualityBadgeClass(h.Quality.ToString());
+                                                var rowClass = selectedTradeHistoryId == h.Id
+                                                ? "table-primary"
+                                                : (h.CurrentPrice > h.Price ? "table-success" :
+                                                h.CurrentPrice < h.Price ? "table-danger" : "");
+                                                <tr class="@rowClass" style="cursor:pointer"
+                                                    @onclick="(() => OnSelectTradeHistory(h.Id))">
+                                                    <td class="fw-semibold">@h.Symbol</td>
+                                                    <td>@h.BarDate.ToString("yyyy-MM-dd")</td>
+                                                    <td>@h.Price.ToString("C")</td>
+                                                    <td>
+                                                        <span class="small fw-semibold">
+                                                            @h.Confidence.ToString("P0")
+                                                        </span>
+                                                    </td>
+                                                    <td><span class="@badgeClass">
+                                                        @h.Quality.ToString("P0")
+                                                    </span></td>
+                                                    <td>@h.CurrentPrice.ToString("C")</td>
+                                                    <td>@h.Quantity</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-lg-4">
+                                <div class="border rounded p-3 h-100">
+                                    <h6 class="mb-2">Daily details</h6>
+
+                                    @if (isLoadingDetails)
+                                    {
+                                        <div class="text-center text-muted py-4">
+                                            Loading details…
+                                        </div>
+                                    }
+                                    else if (tradeHistoryDetails.Count == 0)
+                                    {
+                                        <div class="text-muted small">
+                                            Select a trade from the left to view its daily details.
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="small text-muted mb-2">Details for trade id: <span class="fw-semibold">@selectedTradeHistoryId</span></div>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Date</th>
+                                                        <th>Open</th>
+                                                        <th>High</th>
+                                                        <th>Low</th>
+                                                        <th>Close</th>
+                                                        <th>Volume</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var d in tradeHistoryDetails)
+                                                    {
+                                                        <tr>
+                                                            <td>@d.BarDate.ToString("yyyy-MM-dd")</td>
+                                                            <td>@d.Price.ToString("C")</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="mt-3 text-muted small">
+                        No historic trades loaded for the selected symbol and date range.
+                    </div>
+                }
+            </div>
+        </div>
+
+    </section>
+
+    <section id="subscribe" class="mb-5" aria-label="Subscribe to recommendations">
+        <div class="row justify-content-center">
+            <div class="col-12 col-lg-8">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body p-4 p-md-5">
+                        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start mb-4">
+                            <div>
+                                <h2 class="h4 mb-1">Subscribe to daily recommendations</h2>
+                                <p class="text-muted mb-0">
+                                    Get our top buy signals in a single, concise email.
+                                </p>
+                            </div>
+                            <div class="mt-3 mt-md-0 text-md-end">
+                                <span class="badge bg-success text-white">
+                                    <i class="fas fa-check-circle me-1"></i>No spam, ever
+                                </span>
+                            </div>
+                        </div>
+
+                        <EditForm Model="@subscription" OnValidSubmit="@HandleSubscriptionAsync">
+                            <DataAnnotationsValidator />
+                            <ValidationSummary />
+
+                            <div class="row g-3">
+                                <div class="col-12 col-md-7">
+                                    <label class="form-label">Email address</label>
+                                    <InputText @bind-Value="subscription.Email"
+                                               class="form-control"
+                                               placeholder="you@example.com" />
+                                    <ValidationMessage For="@(() => subscription.Email)" />
+                                </div>
+
+                                <div class="col-12 col-md-5">
+                                    <label class="form-label">Delivery frequency</label>
+                                    <InputSelect @bind-Value="subscription.Frequency" class="form-select">
+                                        <option value="Daily">Daily (recommended)</option>
+                                        <option value="Weekly">Weekly summary</option>
+                                        <option value="Intraday">Intraday highlights</option>
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => subscription.Frequency)" />
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <InputCheckbox @bind-Value="subscription.AcceptTerms" class="form-check-input" />
+                                        <label class="form-check-label">
+                                            I understand that these are not financial advice and accept the terms.
+                                        </label>
+                                    </div>
+                                    <ValidationMessage For="@(() => subscription.AcceptTerms)" />
+                                </div>
+
+                                <div class="col-12 d-grid d-md-flex align-items-center gap-3 mt-2">
+                                    <button type="submit" class="btn btn-primary btn-lg px-4">
+                                        <i class="fas fa-bell me-2"></i>
+                                        @(subscriptionSuccess ? "Update subscription" : "Start my alerts")
+                                    </button>
+                                    <span class="text-muted small">
+                                        You can unsubscribe at any time with a single click.
+                                    </span>
+                                </div>
+                            </div>
+
+                            @if (subscriptionSuccess)
+                            {
+                                <div class="alert alert-success mt-3 mb-0" role="alert">
+                                    <i class="fas fa-check-circle me-2"></i>
+                                    You&apos;re all set! Your TradingBot recommendations will start arriving soon.
+                                </div>
+                            }
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="border-top pt-3 mt-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+            <div class="text-muted small">
+                &copy; @DateTime.Now.Year TradingBot. All rights reserved.
+            </div>
+            <div class="text-muted small">
+                <i class="fas fa-info-circle me-1"></i>
+                Trading involves risk. Past performance does not guarantee future results.
+            </div>
+        </div>
+    </footer>
+</main>

@@ -92,10 +92,12 @@ namespace TraderBotV1.Data
 			if (daysHistory <= 0)
 				throw new ArgumentOutOfRangeException(nameof(daysHistory), "Must be positive");
 
-			// Calculate date range (exclude recent days to avoid partial data)
-			DateTime endDate = DateTime.UtcNow.AddDays(-LOOKBACK_BUFFER_DAYS);
+			DateTime endDateFixed = new DateTime(2025, 11, 5, 22, 0, 0);//
+			DateTime endDate = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day).AddDays(-LOOKBACK_BUFFER_DAYS);
+
+			//endDate = endDateFixed;
 			var end = endDate.AddMinutes(-30);//ToDateTime(new TimeOnly(16, 00, 00));
-			
+
 			var start = end.AddDays(-daysHistory);
 
 			// Determine timeframe based on history length
@@ -134,7 +136,7 @@ namespace TraderBotV1.Data
 			BarTimeFrame timeFrame)
 		{
 			var allBars = new List<IBar>();
-			var req = new HistoricalBarsRequest(symbol, start, end, timeFrame) {};
+			var req = new HistoricalBarsRequest(symbol, start, end, timeFrame) { };
 			string? nextPageToken = null;
 			int pageCount = 0;
 			const int MAX_PAGES = 100; // Safety limit
