@@ -37,7 +37,7 @@ namespace TraderBotWeb.Services
                     [price],
                     [total_value] as TotalValue,
                     [confidence],
-                    [quality] * 100 as Quality,
+                    [quality] as Quality,
                     [created_at] as CreateAt,
                     [current_price] as Currentprice,
                     [lastupdatedon]

@@ -126,12 +126,13 @@
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th scope="col">Day</th>
+@*                         <th scope="col">Day</th> *@
                         <th scope="col">Symbol</th>
+                        <th scope="col">Price</th>
                         <th scope="col">Confidence</th>
                         <th scope="col">Quality</th>
-                        <th scope="col">Performance</th>
-                        <th scope="col">Suggested Action</th>
+@*                         <th scope="col">Price</th> *@
+@*                         <th scope="col">Suggested Action</th> *@
                     </tr>
                 </thead>
                 <tbody>
@@ -149,13 +150,14 @@
                         {
                             var badgeClass = GetQualityBadgeClass(rec.Quality.ToString());
                             <tr>
-                                <td>@rec.DayLabel</td>
+@*                                 <td>@rec.DayLabel</td> *@
                                 <td class="fw-semibold">
-                                    @rec.Symbol
+                                    <a href="https://stockanalysis.com/stocks/@rec.Symbol" target="_blank">@rec.Symbol</a>
                                     <span class="text-muted small d-block d-md-inline ms-md-1">
                                         @rec.Market
                                     </span>
                                 </td>
+                                <td>@rec.Price</td>
                                 <td>
                                     <div class="d-flex align-items-center">
                                         <div class="flex-grow-1 me-2">
@@ -179,8 +181,8 @@
                                         @rec.Quality.ToString("P0")
                                     </span>
                                 </td>
-                                <td class="text-nowrap">
-                                    <span class="@GetPerformanceClass(rec) fw-semibold">
+@*                                 <td class="text-nowrap">
+                                     <span class="@GetPerformanceClass(rec) fw-semibold">
                                         @GetPerformanceText(rec)
                                     </span>
                                     <div class="small text-muted d-block">
@@ -192,13 +194,14 @@
                                         {
                                             <span>-</span>
                                         }
+
                                     </div>
-                                </td>
-                                <td>
+                                </td> *@
+@*                                 <td>
                                     <button class="btn btn-outline-primary btn-sm" @onclick="(() => LoadTradeHistoryForSymbol(rec.Symbol))">
                                         <i class="fas fa-arrow-circle-up me-1"></i>View setup
                                     </button>
-                                </td>
+                                </td> *@
                             </tr>
                         }
                     }
@@ -272,7 +275,7 @@
                                                 h.CurrentPrice < h.Price ? "table-danger" : "");
                                                 <tr class="@rowClass" style="cursor:pointer"
                                                     @onclick="(() => OnSelectTradeHistory(h.Id))">
-                                                    <td class="fw-semibold">@h.Symbol</td>
+                                                    <td class="fw-semibold"><a href="https://stockanalysis.com/stocks/@h.Symbol" target="_blank">@h.Symbol</a></td>
                                                     <td>@h.BarDate.ToString("yyyy-MM-dd")</td>
                                                     <td>@h.Price.ToString("C")</td>
                                                     <td>
