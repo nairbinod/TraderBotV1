@@ -16,7 +16,7 @@ namespace TraderBotV1.Data
 
     public interface IMarketDataProvider
     {
-        Task<List<MarketBar>> GetBarsAsync(string symbol, int daysHistory);
+        Task<List<MarketBar>> GetBarsAsync(string symbol, int daysHistory , DateTime? endDateFixed);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -81,17 +81,18 @@ namespace TraderBotV1.Data
             _dataClient = env.GetAlpacaDataClient(new SecretKey(apiKey, apiSecret));
         }
 
-        public async Task<List<MarketBar>> GetBarsAsync(string symbol, int daysHistory)
+        public async Task<List<MarketBar>> GetBarsAsync(string symbol, int daysHistory, DateTime? endDateFixed)
         {
             if (string.IsNullOrWhiteSpace(symbol))
                 throw new ArgumentNullException(nameof(symbol));
             if (daysHistory <= 0)
                 throw new ArgumentOutOfRangeException(nameof(daysHistory), "Must be positive");
 
-            DateTime endDateFixed = new DateTime(2025, 12, 3, 22, 0, 0);//
+            //DateTime endDateFixed = new DateTime(2025, 12, 3, 22, 0, 0);//
             DateTime endDate = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0).AddDays(-LOOKBACK_BUFFER_DAYS);
 
-            //endDate = endDateFixed;
+            if (endDateFixed.HasValue) endDate = endDateFixed.Value;
+
             var end = endDate.AddMinutes(-30);//ToDateTime(new TimeOnly(16, 00, 00));
 
             var start = end.AddDays(-daysHistory);
@@ -217,7 +218,7 @@ namespace TraderBotV1.Data
             }
         }
 
-        public async Task<List<MarketBar>> GetBarsAsync(string symbol, int daysHistory)
+        public async Task<List<MarketBar>> GetBarsAsync(string symbol, int daysHistory, DateTime? endDateFixed)
         {
             if (string.IsNullOrWhiteSpace(symbol))
                 throw new ArgumentNullException(nameof(symbol));

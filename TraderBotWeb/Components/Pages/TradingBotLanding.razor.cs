@@ -14,8 +14,8 @@ namespace TraderBotWeb.Components.Pages
 		private readonly IDataService dataService = new SqlDataService();
 
 		private List<RecommendationModel> recommendations = new();
-		private SubscriptionModel subscription = new();
-		private bool subscriptionSuccess = false;
+		private SubscriptionModel Subscription = new();
+		private bool SubscriptionSuccess = false;
 		private TodaySummaryModel todaySummary = new();
 
 		// Historic performance - master / detail
@@ -37,10 +37,11 @@ namespace TraderBotWeb.Components.Pages
 				TotalSignals = recommendations.Count,
 				AverageConfidence = recommendations.Count == 0 ? 0m : recommendations.Average(r => r.Confidence),
 				HighQualityCount = recommendations.Count(r => r.Quality > .7m),
-				MarketsScanned = recommendations.Select(r => r.Market).Distinct().Count()
+				MarketsScanned = recommendations.Select(r => r.Market).Distinct().Count(),
+				SignalDate = recommendations.Count == 0 ? DateTime.Now : recommendations.Max(r => r.BarDate)
 			};
 
-			subscription = new SubscriptionModel
+			Subscription = new SubscriptionModel
 			{
 				Frequency = "Daily"
 			};
@@ -74,8 +75,8 @@ namespace TraderBotWeb.Components.Pages
 		private async Task HandleSubscriptionAsync(EditContext context)
 		{
 			// Save subscriber via data service (mock or real)
-			await dataService.SaveSubscriberAsync(subscription);
-			subscriptionSuccess = true;
+			var _r = await dataService.SaveSubscriberAsync(Subscription);
+			if (_r == 1) SubscriptionSuccess = true;
 			StateHasChanged();
 		}
 
@@ -130,6 +131,7 @@ namespace TraderBotWeb.Components.Pages
 			public decimal AverageConfidence { get; set; }
 			public int HighQualityCount { get; set; }
 			public int MarketsScanned { get; set; }
+			public DateTime SignalDate { get; set; }
 		}
 	}
 }

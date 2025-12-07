@@ -166,12 +166,12 @@ namespace TraderBotWeb.Services
             return all.OrderByDescending(h => h.BarDate).ToList();
         }
 
-        public Task SaveSubscriberAsync(SubscriptionModel subscriber)
+        public async Task<int> SaveSubscriberAsync(SubscriptionModel subscriber)
         {
             // In demo mode just log to console (no external libs). In a real app persist to DB.
             Console.WriteLine($"[Mock] Saving subscriber {subscriber.Email} - Frequency: {subscriber.Frequency}");
             subscriber.CreatedAt = DateTime.UtcNow;
-            return Task.CompletedTask;
+            return 1;
         }
     }
 }

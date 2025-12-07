@@ -2,16 +2,30 @@ select * from dbo.tb_signals
 where signal = 'buy' 
 
 select * from dbo.tb_trades
-where side = 'buy' and confidence > .7 and quality > .7  
+where side = 'buy' and confidence > .7 and quality >= .7  
 order by quality desc
 
 select * from dbo.tb_tradeshistory
-
+select * from tb_tradeshistory_details
 select * from tb_prices
+/*
+delete from dbo.tb_tradeshistory
+delete from tb_signals
+delete from dbo.tb_trades
 
---delete from dbo.tb_tradeshistory
---delete from dbo.tb_trades
+delete from tb_tradeshistory_details
 
+
+*/
+
+-- 
+select DATEDIFF(day,bar_date , lastupdatedon), *  from 
+
+update dbo.tb_tradeshistory
+set isActive = 0 
+where DATEDIFF(day,bar_date , lastupdatedon) > 20
+
+select DATEDIFF(day,'10/20/2025' , getdate())
 SELECT
                     [id],
                     [symbol],
@@ -25,3 +39,10 @@ SELECT
                 FROM dbo.[tb_tradeshistory]
 
 select * from [dbo].[tb_tradeshistory_details]
+
+select *  from tb_subscribers
+
+SELECT DISTINCT TOP 100 symbol 
+                FROM dbo.tb_symbols 
+                WHERE isActive = 1
+                ORDER BY symbol

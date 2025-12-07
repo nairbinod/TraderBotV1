@@ -54,7 +54,6 @@ namespace TraderBotV1
 					tradingClient = InitializeTradingClient(cfg);
 				}
 
-				db.ClearAllData();
 				// Run the bot
 				var bot = new SmartBot(dataProvider, db, cfg, emailService);
 				await bot.RunAsync();

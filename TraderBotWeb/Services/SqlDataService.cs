@@ -41,7 +41,7 @@ namespace TraderBotWeb.Services
                     [created_at] as CreateAt,
                     [current_price] as Currentprice,
                     [lastupdatedon]
-                FROM [dbo].[tb_trades]
+                FROM [dbo].[tb_trades] WHERE lower(side) = 'buy' and confidence >= .7 and quality >=.7
                 ORDER BY [quality] DESC";
             return await conn.QueryAsync<RecommendationModel>(sql, new { Top = top });
 
@@ -69,7 +69,8 @@ namespace TraderBotWeb.Services
                   ,[current_price] CurrentPrice
                   ,[lastupdatedon]
                 FROM dbo.[tb_tradeshistory]
-                WHERE (isActive is null or isActive = 1) and [symbol] = @Symbol AND [bar_date] BETWEEN @From AND @To
+                WHERE (isActive is null or isActive = 1) AND lower(side) = 'buy' and confidence >= .7 and quality >=.7
+                and [symbol] = @Symbol AND [bar_date] BETWEEN @From AND @To
                 ORDER BY [bar_date] ASC ,quality,confidence";
             return await conn.QueryAsync<TradeHistoryModel>(sql, new { Symbol = symbol, From = from, To = to });
         }
@@ -96,7 +97,8 @@ namespace TraderBotWeb.Services
                   ,[current_price] CurrentPrice
                   ,[lastupdatedon]
                 FROM dbo.[tb_tradeshistory]
-                WHERE (isActive is null or isActive = 1) and  [bar_date] BETWEEN @From AND @To
+                WHERE (isActive is null or isActive = 1) AND lower(side) = 'buy' and confidence >= .7 and quality >=.7
+                and [bar_date] BETWEEN @From AND @To
                 ORDER BY [bar_date] ASC,quality DESC,confidence DESC";
             return await conn.QueryAsync<TradeHistoryModel>(sql, new { From = from, To = to });
         }
@@ -120,21 +122,21 @@ namespace TraderBotWeb.Services
 	                h.[side]
                 FROM dbo.[tb_tradeshistory_details] d inner join dbo.[tb_tradeshistory] h on d.tb_tradehistory_id = h.id
                 WHERE d.[tb_tradehistory_id] = @Id
-                ORDER BY d.[bar_date] ASC";
+                ORDER BY d.[bar_date] DESC";
             return await conn.QueryAsync<TradeHistoryDetailModel>(sql, new { Id = tradeHistoryId });
         }
 
-        public Task SaveSubscriberAsync(SubscriptionModel subscriber)
+        public async Task<int> SaveSubscriberAsync(SubscriptionModel subscriber)
         {
             // Example Dapper code (commented out):
-            /*
-            using var conn = new Microsoft.Data.SqlClient.SqlConnection(_connectionString);
+            
+            using var conn = new SqlConnection(_connectionString);
             var sql = @"
-                INSERT INTO [tradebot].[subscribers] (email, frequency, accept_terms, created_at)
+                INSERT INTO [dbo].[tb_subscribers] (email, frequency, accept_terms, created_at)
                 VALUES (@Email, @Frequency, @AcceptTerms, @CreatedAt)";
-            return conn.ExecuteAsync(sql, subscriber);
-            */
-            throw new NotImplementedException("SqlDataService is a template. Add Dapper and enable code.");
+            return await conn.ExecuteAsync(sql, subscriber);
+            
+            //throw new NotImplementedException("SqlDataService is a template. Add Dapper and enable code.");
         }
     }
 }

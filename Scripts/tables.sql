@@ -76,3 +76,13 @@ CREATE TABLE dbo.tb_tradeshistory_details (
     price float NOT NULL,
     created_at datetime default getdate()
 	)
+
+	go
+
+	CREATE TABLE dbo.tb_subscribers (
+    id INTEGER PRIMARY KEY IDENTITY(1,1),
+	email varchar(50)  NULL,
+    frequency varchar(50)  NULL,
+    accept_terms bit null,
+    created_at datetime default getdate()
+	)
