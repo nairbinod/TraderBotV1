@@ -201,7 +201,7 @@ namespace TraderBotV1
 					cfg.MailJet.ApiKey,
 					cfg.MailJet.ApiSecret,
 					cfg.MailJet.SenderEmail,
-					cfg.MailJet.SenderName ?? "SmartBot Trading"
+					cfg.MailJet.SenderName ?? "TradeBot Recommendations."
 				);
 
 				Console.WriteLine($"✅ Email service initialized (from: {cfg.MailJet.SenderEmail})");

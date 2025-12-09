@@ -315,31 +315,31 @@ namespace TraderBotV1
 
 				// Swing-optimized weights
 				var swingWeights = new Dictionary<int, decimal>
-	{
-		// HIGH WEIGHT - Excellent for swing
-		{0, 1.5m},   // TrendFollowingMTF
-		{4, 1.4m},   // EmaRsiEnhanced
-		{7, 1.3m},   // MacdDivergenceEnhanced
-		{12, 1.4m},  // IchimokuCloud
-		{14, 1.3m},  // SupertrendEnhanced
-		{31, 1.4m},  // ElderTripleScreen
-		{34, 1.5m},  // WeeklyTrendFilter
+									{
+										// HIGH WEIGHT - Excellent for swing
+										{0, 1.5m},   // TrendFollowingMTF
+										{4, 1.4m},   // EmaRsiEnhanced
+										{7, 1.3m},   // MacdDivergenceEnhanced
+										{12, 1.4m},  // IchimokuCloud
+										{14, 1.3m},  // SupertrendEnhanced
+										{31, 1.4m},  // ElderTripleScreen
+										{34, 1.5m},  // WeeklyTrendFilter
 		
-		// MEDIUM WEIGHT - Good for swing
-		{3, 1.2m},   // MomentumReversalDivergence
-		{5, 1.1m},   // BollingerMeanReversion
-		{10, 1.1m},  // DonchianBreakout
-		{24, 1.1m},  // OBVDivergence
-		{32, 1.2m},  // ElderRayStrategy
-		{40, 1.2m},  // MultiFilterConfirmation
+										// MEDIUM WEIGHT - Good for swing
+										{3, 1.2m},   // MomentumReversalDivergence
+										{5, 1.1m},   // BollingerMeanReversion
+										{10, 1.1m},  // DonchianBreakout
+										{24, 1.1m},  // OBVDivergence
+										{32, 1.2m},  // ElderRayStrategy
+										{40, 1.2m},  // MultiFilterConfirmation
 		
-		// REDUCED WEIGHT - Less suitable for swing
-		{11, 0.5m},  // VWAPStrategy
-		{18, 0.3m},  // GapTradingStrategy
-		{20, 0.7m},  // ForceIndexBreakout
-		{26, 0.7m},  // RocMomentumBurst
-		{38, 0.5m},  // VWAPSwingStrategy
-	};
+										// REDUCED WEIGHT - Less suitable for swing
+										{11, 0.5m},  // VWAPStrategy
+										{18, 0.3m},  // GapTradingStrategy
+										{20, 0.7m},  // ForceIndexBreakout
+										{26, 0.7m},  // RocMomentumBurst
+										{38, 0.5m},  // VWAPSwingStrategy
+									};
 
 				decimal totalWeight = 0m;
 				decimal weightedSum = 0m;

@@ -73,20 +73,20 @@ namespace TraderBotV1
 			//await UpdateTradedSymbols();
 
 			PrintHeader();
-
-			DateTime startDate = new DateTime(2025, 12, 5);
-			// start processing date (for backtesting) starting from 11/1/2025 to today
-			for (int i = 0; i < 3; i++)
-			{
-				DateTime? processDate = startDate.AddDays(i).AddHours(23).AddMinutes(30); // set to end of day UTC	
+			DateTime? processDate = null;
+			//DateTime startDate = new DateTime(2025, 12, 5);
+			//start processing date(for backtesting) starting from 11 / 1 / 2025 to today
+			//for (int i = 0; i < 3; i++)
+			//{
+				//processDate = startDate.AddDays(i).AddHours(23).AddMinutes(30); // set to end of day UTC	
 				await ProcessTradingDayAsync(processDate);
-			}
+			//}
 
 			async Task ProcessTradingDayAsync(DateTime? processDate)
 			{
 				// process day
 				// Check entry timing restrictions
-				if (!IsValidEntryTiming(processDate.Value))
+				if (!IsValidEntryTiming(processDate== null ? DateTime.Now: processDate.Value))
 				{
 					Console.WriteLine("\n⏰ Entry timing restrictions active. Skipping signal generation.");
 					Console.WriteLine("   Run analysis without executing trades, or wait for optimal entry window.");
@@ -126,8 +126,8 @@ namespace TraderBotV1
 							await Task.Delay(RATE_LIMIT_DELAY_MS);
 						}
 					}
-
-					//await _engine.SendSessionNotificationsAsync(_cfg.NotificationEmail);
+					var _subscribers = _db.GetActiveSubscribers();
+					await _engine.SendSessionNotificationsAsync(_subscribers);
 
 					PrintSwingSummary(results, swingMetrics);
 				}

@@ -283,6 +283,20 @@ namespace TraderBotV1.Data
 			return conn.Query<string>(sql).ToList();
 		}
 
+		public string GetActiveSubscribers()
+		{
+			using var conn = new SqlConnection(_connectionString);
+
+			var sql = @"SELECT STRING_AGG(email, ',') AS UniqueEmailList
+						FROM (
+							SELECT DISTINCT email
+							FROM YourTableName
+						) x;";
+
+			// Fix: Use QueryFirstOrDefault to retrieve a single string value
+			return conn.QueryFirstOrDefault<string>(sql);
+		}
+
 		public async Task<IEnumerable<TradeRecord>> GetTradeHistory()//DateTime from, DateTime to)
 		{
 			// Example Dapper code (commented out):
