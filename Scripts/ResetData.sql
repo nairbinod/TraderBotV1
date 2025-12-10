@@ -38,7 +38,7 @@ AS
 	-- flag trades older than 20 days and stop tracking prices 
 	update dbo.tb_tradeshistory
 	set isActive = 0 
-	where DATEDIFF(day,bar_date , lastupdatedon) > 20;
+	where DATEDIFF(day,bar_date , lastupdatedon) > 15 and isActive is null 
 	-- flag low quality trades as inactive
 	update dbo.tb_tradeshistory
 	set isActive = 0 

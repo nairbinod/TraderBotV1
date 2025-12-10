@@ -15,15 +15,18 @@ delete from dbo.tb_trades
 
 delete from tb_tradeshistory_details
 
+update dbo.tb_tradeshistory
+set isActive = 0 
+where DATEDIFF(day,bar_date , lastupdatedon) > 15 and isActive is null 
 
 */
 
 -- 
 select DATEDIFF(day,bar_date , lastupdatedon), *  from 
+dbo.tb_tradeshistory where isActive is null 
+order by  DATEDIFF(day,bar_date , lastupdatedon) desc
 
-update dbo.tb_tradeshistory
-set isActive = 0 
-where DATEDIFF(day,bar_date , lastupdatedon) > 20
+
 
 select DATEDIFF(day,'10/20/2025' , getdate())
 SELECT
@@ -41,6 +44,12 @@ SELECT
 select * from [dbo].[tb_tradeshistory_details]
 
 select *  from tb_subscribers
+
+SELECT STRING_AGG(email, ',') AS UniqueEmailList
+FROM (
+    SELECT DISTINCT email
+    FROM tb_subscribers
+) x;
 
 SELECT DISTINCT TOP 100 symbol 
                 FROM dbo.tb_symbols 
