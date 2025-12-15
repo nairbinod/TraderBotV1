@@ -905,7 +905,7 @@ namespace TraderBotV1
 				return;
 			}
 			// ⭐ BALANCED: Send signals with 60%+ confidence
-			var buySignals = _sessionSignals.Where(s => s.Direction == "Buy" && s.Confidence > .7m).ToList();
+			var buySignals = _sessionSignals.Where(s => s.Direction == "Buy" && s.Confidence > .7m && s.Quality >.7m).ToList();
 
 			if (buySignals.Count == 0)
 			{

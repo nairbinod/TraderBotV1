@@ -70,11 +70,11 @@ namespace TraderBotV1
 
 		public async Task RunAsync()
 		{
-			//await UpdateTradedSymbols();
+			DateTime? processDate = null;
 
 			PrintHeader();
-			DateTime? processDate = null;
-			//DateTime startDate = new DateTime(2025, 12, 5);
+			//DateTime startDate = new DateTime(2025, 12, 12, 22,0,0);
+			//processDate = startDate;
 			//start processing date(for backtesting) starting from 11 / 1 / 2025 to today
 			//for (int i = 0; i < 3; i++)
 			//{
@@ -131,9 +131,11 @@ namespace TraderBotV1
 
 					PrintSwingSummary(results, swingMetrics);
 				}
-				//update traded symbols current value on Mondays and Fridays
+
+				//update traded symbols current value 
 				// Weekend - no trading
-				if (processDate.HasValue && !(processDate.Value.DayOfWeek == DayOfWeek.Saturday || processDate.Value.DayOfWeek == DayOfWeek.Sunday))
+				var today = processDate ?? DateTime.Now;
+				if (!(today.DayOfWeek == DayOfWeek.Saturday || today.DayOfWeek == DayOfWeek.Sunday))
 				{
 					await UpdateTradedSymbols(processDate);
 				}
@@ -589,6 +591,7 @@ namespace TraderBotV1
 
 		private async Task UpdateTradedSymbols(DateTime? processDate)
 		{
+
 			var symbols = GetTradedSymbols();
 			foreach (var symbol in symbols)
 			{

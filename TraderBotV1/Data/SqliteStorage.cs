@@ -290,7 +290,7 @@ namespace TraderBotV1.Data
 			var sql = @"SELECT STRING_AGG(email, ',') AS UniqueEmailList
 						FROM (
 							SELECT DISTINCT email
-							FROM YourTableName
+							FROM tb_subscribers
 						) x;";
 
 			// Fix: Use QueryFirstOrDefault to retrieve a single string value

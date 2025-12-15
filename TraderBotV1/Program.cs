@@ -43,8 +43,8 @@ namespace TraderBotV1
 
 				//emailService.SendEmailAsync(
 				//	cfg.NotificationEmail,
-				//	"SmartBot Started",
-				//	"SmartBot trading system has started successfully."
+				//	"SmartBot Started-1",
+				//	"SmartBot trading system has started successfully-1."
 				//).Wait();
 
 				// Optional: Initialize trading client (if live trading enabled)

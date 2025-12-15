@@ -38,11 +38,11 @@ AS
 	-- flag trades older than 20 days and stop tracking prices 
 	update dbo.tb_tradeshistory
 	set isActive = 0 
-	where DATEDIFF(day,bar_date , lastupdatedon) > 15 and isActive is null 
+	where DATEDIFF(day,bar_date , lastupdatedon) > 12 and isActive is null 
 	-- flag low quality trades as inactive
 	update dbo.tb_tradeshistory
 	set isActive = 0 
-	where (confidence <.7 or quality < .7);
+	where (confidence <.7 or quality < .7) and isActive is null ;
 	
 	-- DELETE Dduplicate records 
 	WITH Dups AS (
