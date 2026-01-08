@@ -283,18 +283,14 @@ namespace TraderBotV1.Data
 			return conn.Query<string>(sql).ToList();
 		}
 
-		public string GetActiveSubscribers()
+		public List<string> GetActiveSubscribers()
 		{
 			using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"SELECT STRING_AGG(email, ',') AS UniqueEmailList
-						FROM (
-							SELECT DISTINCT email
-							FROM tb_subscribers
-						) x;";
+			var sql = @"SELECT DISTINCT email FROM tb_subscribers;";
 
 			// Fix: Use QueryFirstOrDefault to retrieve a single string value
-			return conn.QueryFirstOrDefault<string>(sql);
+			return conn.Query<string>(sql).ToList();
 		}
 
 		public async Task<IEnumerable<TradeRecord>> GetTradeHistory()//DateTime from, DateTime to)

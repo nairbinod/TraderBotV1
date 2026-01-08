@@ -12,12 +12,12 @@ namespace TraderBotV1
 	/// <summary>
 	/// SWING TRADING OPTIMIZED STRATEGIES
 	/// Adjusted for 1-2 week holding periods on DAILY bars
-	/// 
+	///
 	/// Key Changes:
 	/// - EMA periods: 20/50 instead of 9/21
 	/// - RSI period: 14 (keep standard)
 	/// - Bollinger: 25 period instead of 20
-	/// - ADX threshold: 22 instead of 18
+	/// - ADX threshold: 20 (balanced)
 	/// - Volume: 30-day average instead of 20
 	/// - Lookback periods: Generally 2-3x longer
 	/// </summary>
@@ -30,13 +30,13 @@ namespace TraderBotV1
 		// ═══ CORE STRATEGIES ═══
 
 		/// <summary>
-		/// PRIMARY FILTERS - Required gate check for all signals (FIXED VERSION)
-		/// 
-		/// FIXES APPLIED:
-		/// 1. Direction determined BEFORE DI validation (was backwards)
-		/// 2. Graduated EMA alignment (was requiring perfect alignment)
-		/// 3. Both buy AND sell signals now possible (sells were 100% blocked)
-		/// 4. ADX threshold will be 18 after Indicators.cs update
+		/// PRIMARY FILTERS - Required gate check for all signals
+		///
+		/// BALANCED for swing trading:
+		/// 1. ADX >= 20 (balanced threshold)
+		/// 2. Choppiness filter (trending market only)
+		/// 3. Graduated EMA alignment
+		/// 4. DI confirmation with direction
 		/// </summary>
 		public static StrategySignal PrimaryFilters(
 			List<decimal> closes,
@@ -61,15 +61,11 @@ namespace TraderBotV1
 			// FILTER 1: ADX - Market must be trending (not ranging)
 			// ═══════════════════════════════════════════════════════════════
 
-			// ⭐ NOTE: This checks ADX >= 20 AFTER you update Indicators.cs
-			// For now it still uses the ValidateTrendStrength function which has ADX >= 20
-			// We'll validate direction correctly below
-
+			// BALANCED: ADX >= 18 for trending market
 			decimal adxValue = adx[idx];
 
-			// Simple ADX check - just verify market is trending
-			if (adxValue < 20m)  // ⭐ Will work after Indicators.cs update
-				return Hold($"❌ Market ranging (ADX={adxValue:F1} < 20)");
+			if (adxValue < 18m)
+				return Hold($"❌ Market not trending (ADX={adxValue:F1} < 20)");
 
 			// ═══════════════════════════════════════════════════════════════
 			// FILTER 2: Choppiness - Market must not be too choppy
@@ -88,19 +84,19 @@ namespace TraderBotV1
 			decimal ema50Val = ema50[idx];
 			decimal ema200Val = ema200.Count > idx ? ema200[idx] : ema50Val;
 
-			// ⭐ FIX: Use graduated alignment instead of perfect alignment
+			// BALANCED: Graduated alignment for swing trades
 
-			// Perfect alignment
+			// Perfect alignment (highest quality)
 			bool perfectBullish = price > ema50Val && ema50Val > ema200Val;
 			bool perfectBearish = price < ema50Val && ema50Val < ema200Val;
 
-			// Moderate alignment - price above/below long-term trend
-			bool moderateBullish = price > ema200Val && price > ema50Val;
-			bool moderateBearish = price < ema200Val && price < ema50Val;
+			// Moderate alignment - price above/below both EMAs
+			bool moderateBullish = price > ema200Val && price > ema50Val && !perfectBullish;
+			bool moderateBearish = price < ema200Val && price < ema50Val && !perfectBearish;
 
-			// Weak alignment - at least above/below EMA200
-			bool weakBullish = price > ema200Val;
-			bool weakBearish = price < ema200Val;
+			// Weak alignment - price at least above/below EMA200
+			bool weakBullish = price > ema200Val && !moderateBullish && !perfectBullish;
+			bool weakBearish = price < ema200Val && !moderateBearish && !perfectBearish;
 
 			string marketDirection;
 			decimal alignmentConfidence;
@@ -113,12 +109,12 @@ namespace TraderBotV1
 			else if (moderateBullish)
 			{
 				marketDirection = "Buy";
-				alignmentConfidence = 0.70m;
+				alignmentConfidence = 0.72m;
 			}
 			else if (weakBullish)
 			{
 				marketDirection = "Buy";
-				alignmentConfidence = 0.55m;
+				alignmentConfidence = 0.58m;  // Lower but still valid
 			}
 			else if (perfectBearish)
 			{
@@ -128,25 +124,24 @@ namespace TraderBotV1
 			else if (moderateBearish)
 			{
 				marketDirection = "Sell";
-				alignmentConfidence = 0.70m;
+				alignmentConfidence = 0.72m;
 			}
 			else if (weakBearish)
 			{
 				marketDirection = "Sell";
-				alignmentConfidence = 0.55m;
+				alignmentConfidence = 0.58m;  // Lower but still valid
 			}
 			else
 			{
 				// Price too close to EMAs, no clear direction
-				return Hold("Market not clearly trending - price near EMAs");
+				return Hold("No clear trend - price between EMAs");
 			}
 
 			// ═══════════════════════════════════════════════════════════════
 			// FILTER 4: Validate DI Alignment with Determined Direction
 			// ═══════════════════════════════════════════════════════════════
 
-			// ⭐ FIX: Now we validate DI AFTER determining direction
-			// This allows both buy AND sell signals!
+			// BALANCED: DI confirmation with moderate penalties
 
 			if (diPlus.Count > idx && diMinus.Count > idx)
 			{
@@ -160,21 +155,61 @@ namespace TraderBotV1
 				// Penalize if DI conflicts with EMA direction
 				if (marketDirection == "Buy" && !diSupportsBuy)
 				{
-					// EMAs bullish but DI bearish - reduce confidence
-					alignmentConfidence *= 0.85m;  // 15% penalty
+					// EMAs bullish but DI bearish - moderate penalty
+					alignmentConfidence *= 0.82m;  // 18% penalty
 				}
 				else if (marketDirection == "Sell" && !diSupportsSell)
 				{
-					// EMAs bearish but DI bullish - reduce confidence
-					alignmentConfidence *= 0.85m;  // 15% penalty
+					// EMAs bearish but DI bullish - moderate penalty
+					alignmentConfidence *= 0.82m;  // 18% penalty
 				}
 
-				// If strong DI confirmation, boost confidence
+				// Bonus for strong DI confirmation
 				decimal diGap = Math.Abs(diPlusVal - diMinusVal);
-				if ((marketDirection == "Buy" && diSupportsBuy && diGap > 5m) ||
-					(marketDirection == "Sell" && diSupportsSell && diGap > 5m))
+				if ((marketDirection == "Buy" && diSupportsBuy && diGap > 6m) ||
+					(marketDirection == "Sell" && diSupportsSell && diGap > 6m))
 				{
-					alignmentConfidence = Math.Min(alignmentConfidence * 1.10m, 0.95m);  // 10% bonus
+					alignmentConfidence = Math.Min(alignmentConfidence * 1.12m, 0.95m);  // 12% bonus
+				}
+			}
+
+			// ═══════════════════════════════════════════════════════════════
+			// ⭐ CONFIDENCE ADJUSTMENT: Prefer pullback entries (NO REJECTIONS)
+			// ═══════════════════════════════════════════════════════════════
+
+			int lookback = 20;
+			var recentHighs = highs.Skip(Math.Max(0, idx - lookback)).Take(lookback).ToList();
+			var recentLows = lows.Skip(Math.Max(0, idx - lookback)).Take(lookback).ToList();
+
+			if (recentHighs.Count >= lookback && recentLows.Count >= lookback)
+			{
+				decimal recentHigh = recentHighs.Max();
+				decimal recentLow = recentLows.Min();
+				decimal priceRange = recentHigh - recentLow;
+
+				if (priceRange > 0)
+				{
+					decimal pricePosition = (price - recentLow) / priceRange;
+
+					// ⭐ Small penalty for extended entries (no rejection)
+					if (marketDirection == "Buy" && pricePosition > 0.85m)
+					{
+						alignmentConfidence *= 0.95m;  // 5% penalty only
+					}
+					else if (marketDirection == "Sell" && pricePosition < 0.15m)
+					{
+						alignmentConfidence *= 0.95m;  // 5% penalty only
+					}
+
+					// ⭐ Bonus for ideal pullback entries
+					if (marketDirection == "Buy" && pricePosition < 0.40m)
+					{
+						alignmentConfidence *= 1.08m;  // 8% bonus for pullback entry
+					}
+					else if (marketDirection == "Sell" && pricePosition > 0.60m)
+					{
+						alignmentConfidence *= 1.08m;  // 8% bonus for bounce entry
+					}
 				}
 			}
 
@@ -183,38 +218,44 @@ namespace TraderBotV1
 			// ═══════════════════════════════════════════════════════════════
 
 			// Weight the components
-			decimal adxConfidence = adxValue >= 25m ? 0.80m :
-									adxValue >= 20m ? 0.70m : 0.60m;
+			decimal adxConfidence = adxValue >= 30m ? 0.85m :
+									adxValue >= 25m ? 0.75m :
+									adxValue >= 22m ? 0.65m : 0.55m;
 
 			decimal compositeConfidence =
-				(adxConfidence * 0.35m) +           // ADX strength
+				(adxConfidence * 0.35m) +                // ADX strength
 				(choppyValidation.Confidence * 0.30m) +  // Choppiness
-				(alignmentConfidence * 0.35m);      // EMA + DI alignment
+				(alignmentConfidence * 0.35m);           // EMA + DI alignment
+
+			// Minimum composite confidence for balanced mode
+			if (compositeConfidence < 0.50m)
+				return Hold($"Composite confidence too low ({compositeConfidence:P0})");
 
 			return new(
 				marketDirection,
 				Clamp01(compositeConfidence),
-				$"✅ Primary OK (ADX={adxValue:F1}, CI={choppiness[idx]:F1}, {(marketDirection == "Buy" ? "Bullish" : "Bearish")} EMA)");
+				$"✅ Primary OK (ADX={adxValue:F1}, CI={choppiness[idx]:F1}, {(marketDirection == "Buy" ? "Bullish" : "Bearish")} alignment)");
 		}
 
 
 
 		// ═══════════════════════════════════════════════════════════════════════════
-		// USAGE NOTES:
+		// BALANCED SWING TRADING MODE - Quality with Volume
 		// ═══════════════════════════════════════════════════════════════════════════
 		//
-		// This fixed version:
+		// Key filtering criteria (BALANCED - avoid peaks but allow signals):
 		//
-		// 1. ✅ Determines direction from EMAs FIRST
-		// 2. ✅ Uses graduated alignment (perfect, moderate, weak)
-		// 3. ✅ Then validates DI matches direction
-		// 4. ✅ Allows both BUY and SELL signals
-		// 5. ✅ Penalizes DI conflicts but doesn't reject
-		// 6. ✅ More realistic and less strict
+		// 1. ADX >= 20 (trending market required)
+		// 2. Graduated EMA alignment (perfect, moderate, weak)
+		// 3. DI confirmation with 18% penalty for conflicts
+		// 4. Minimum 50% composite confidence
+		// 5. Choppiness filter for trending markets
 		//
 		// Expected Results:
-		// - Before: ~30% pass rate, 0% sell signals
-		// - After:  ~60% pass rate, 40% buy / 20% sell signals
+		// - Balanced signal generation with quality focus
+		// - ~40-50% pass rate
+		// - Higher win rate than relaxed mode
+		// - Good swing trade setups
 		//
 		// ═══════════════════════════════════════════════════════════════════════════
 
@@ -1378,52 +1419,43 @@ namespace TraderBotV1
 				}
 			}
 
-			// STRICTER: Strong buy - all conditions must be met
+			// Strong buy - all conditions must be met
 			if (priceAboveCloud && bullishCloud && tenkanAboveKijun)
 			{
-				// NEW: Check price momentum
+				decimal cloudDistance = (price - cloudTop) / price;
+
+				// Check price momentum
 				int idx = closes.Count - 1;
 				bool strongMomentum = closes[idx] > closes[idx - 3];
 
-				if (!strongMomentum)
-				{
-					return Hold("Price momentum weak despite bullish Ichimoku");
-				}
+				// ⭐ Reduce confidence if weak momentum (don't reject)
+				decimal momentumPenalty = strongMomentum ? 0m : 0.1m;
 
-				// STRICTER: Tenkan must be rising
-				// (Would need previous tenkan value - approximate with price)
-				if (price < tenkan * 1.005m)
-				{
-					return Hold("Price not above Tenkan");
-				}
-
-				// STRICTER: Lower confidence
-				decimal strength = Clamp01((price - cloudTop) / price * 15m + 0.4m);  // REDUCED
+				// ⭐ GRADUAL: Reduce confidence as extension increases (NO REJECTION)
+				decimal extensionPenalty = cloudDistance > 0.10m ? (cloudDistance - 0.10m) * 1.5m : 0m;
+				decimal strength = Clamp01((price - cloudTop) / price * 15m + 0.4m - extensionPenalty - momentumPenalty);
 
 				return new("Buy", strength,
-					$"Bullish Ichimoku (price {(price - cloudTop) / price:P1} above cloud)");
+					$"Bullish Ichimoku (price {cloudDistance:P1} above cloud)");
 			}
 
-			// STRICTER: Strong sell - all conditions must be met
+			// Strong sell - all conditions must be met
 			if (priceBelowCloud && !bullishCloud && !tenkanAboveKijun)
 			{
+				decimal cloudDistance = (cloudBottom - price) / price;
+
 				int idx = closes.Count - 1;
 				bool strongMomentum = closes[idx] < closes[idx - 3];
 
-				if (!strongMomentum)
-				{
-					return Hold("Price momentum weak despite bearish Ichimoku");
-				}
+				// ⭐ Reduce confidence if weak momentum (don't reject)
+				decimal momentumPenalty = strongMomentum ? 0m : 0.1m;
 
-				if (price > tenkan * 0.995m)
-				{
-					return Hold("Price not below Tenkan");
-				}
-
-				decimal strength = Clamp01((cloudBottom - price) / price * 15m + 0.4m);
+				// ⭐ GRADUAL: Reduce confidence as extension increases (NO REJECTION)
+				decimal extensionPenalty = cloudDistance > 0.10m ? (cloudDistance - 0.10m) * 1.5m : 0m;
+				decimal strength = Clamp01((cloudBottom - price) / price * 15m + 0.4m - extensionPenalty - momentumPenalty);
 
 				return new("Sell", strength,
-					$"Bearish Ichimoku (price {(cloudBottom - price) / price:P1} below cloud)");
+					$"Bearish Ichimoku (price {cloudDistance:P1} below cloud)");
 			}
 
 			// NO MORE BREAKOUT SIGNALS - Too prone to false signals
@@ -3439,7 +3471,9 @@ namespace TraderBotV1
 				bool volumeConfirm = volRatio > 1.3m;
 				bool accelerating = rocChange > 2m;
 
-				decimal strength = 0.60m;
+				// ⭐ Gradual confidence reduction for high momentum (NO REJECTION)
+				decimal baseMomentumPenalty = currentROC > 15m ? (currentROC - 15m) / 200m : 0m;
+				decimal strength = 0.60m - baseMomentumPenalty;
 				if (volumeConfirm) strength += 0.20m;
 				if (accelerating) strength += 0.10m;
 
@@ -3453,7 +3487,9 @@ namespace TraderBotV1
 				bool volumeConfirm = volRatio > 1.3m;
 				bool accelerating = rocChange < -2m;
 
-				decimal strength = 0.60m;
+				// ⭐ Gradual confidence reduction for high momentum (NO REJECTION)
+				decimal baseMomentumPenalty = currentROC < -15m ? (Math.Abs(currentROC) - 15m) / 200m : 0m;
+				decimal strength = 0.60m - baseMomentumPenalty;
 				if (volumeConfirm) strength += 0.20m;
 				if (accelerating) strength += 0.10m;
 

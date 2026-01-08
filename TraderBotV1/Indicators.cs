@@ -2849,6 +2849,7 @@ namespace TraderBotV1
 		/// <summary>
 		/// PRIMARY FILTER #1: Market must be trending
 		/// Call this BEFORE any other validation
+		/// BALANCED: ADX >= 20 for trending signals
 		/// </summary>
 		public static SignalValidation ValidateTrendStrength(
 			List<decimal> adx, List<decimal> diPlus, List<decimal> diMinus,
@@ -2862,9 +2863,9 @@ namespace TraderBotV1
 			decimal adxValue = adx[idx];
 			bool isBuy = direction == "Buy";
 
-			// GATE: Market must be trending
+			// GATE: Market must be trending (BALANCED: ADX >= 20)
 			if (adxValue < 20m)
-				return validation.Fail($"Market ranging (ADX={adxValue:F1} < 20)");
+				return validation.Fail($"Market not trending (ADX={adxValue:F1} < 20)");
 
 			// Check DI alignment with direction
 			if (diPlus.Count > idx && diMinus.Count > idx)
@@ -2879,7 +2880,7 @@ namespace TraderBotV1
 					return validation.Fail($"DI+ dominant ({diPlusVal:F1} > {diMinusVal:F1}) - bullish");
 			}
 
-			// Confidence based on ADX strength
+			// Confidence based on ADX strength (BALANCED tiers)
 			if (adxValue >= 30m)
 			{
 				validation.IsValid = true;
@@ -3274,13 +3275,17 @@ namespace TraderBotV1
 				if (currentDir == 1 && stDistance > 0.02m)
 				{
 					validation.IsValid = true;
-					validation.Confidence = 0.60m;
+					// ⭐ Gradual confidence reduction as extension increases (NO REJECTION)
+					decimal extensionPenalty = stDistance > 0.08m ? (stDistance - 0.08m) * 0.8m : 0m;
+					validation.Confidence = Math.Max(0.45m, 0.65m - extensionPenalty);
 					validation.Reason = $"Supertrend bullish continuation ({stDistance:P2} above)";
 				}
 				else if (currentDir == -1 && stDistance > 0.02m)
 				{
 					validation.IsValid = true;
-					validation.Confidence = 0.60m;
+					// ⭐ Gradual confidence reduction as extension increases (NO REJECTION)
+					decimal extensionPenalty = stDistance > 0.08m ? (stDistance - 0.08m) * 0.8m : 0m;
+					validation.Confidence = Math.Max(0.45m, 0.65m - extensionPenalty);
 					validation.Reason = $"Supertrend bearish continuation ({stDistance:P2} below)";
 				}
 				else

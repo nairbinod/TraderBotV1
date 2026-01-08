@@ -98,7 +98,7 @@ namespace TraderBotWeb.Services
 				  ,[lastupdatedon]
 				FROM dbo.[tb_tradeshistory]
 				WHERE (isActive is null or isActive = 1) and current_price > 0
-				AND lower(side) = 'buy' and confidence >= .7 and quality >= .75
+				AND lower(side) = 'buy' and confidence >= .7 and quality >= .7
 				and [bar_date] BETWEEN @From AND @To
 				ORDER BY [bar_date] ASC,quality DESC,confidence DESC";
 			return await conn.QueryAsync<TradeHistoryModel>(sql, new { From = from, To = to });
@@ -122,7 +122,7 @@ namespace TraderBotWeb.Services
 					h.[confidence],
 					h.[side]
 				FROM dbo.[tb_tradeshistory_details] d inner join dbo.[tb_tradeshistory] h on d.tb_tradehistory_id = h.id
-				WHERE d.[tb_tradehistory_id] = @Id
+				WHERE d.[tb_tradehistory_id] = @Id and abs(DATEDIFF(day,d.bar_date , getdate())) <= 20 
 				ORDER BY d.[bar_date] DESC";
 			return await conn.QueryAsync<TradeHistoryDetailModel>(sql, new { Id = tradeHistoryId });
 		}

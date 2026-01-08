@@ -33,12 +33,17 @@ AS
 		,[isActive]
 	FROM [dbo].[tb_trades]
 	where side = 'Buy';
-	DELETE FROM [dbo].[tb_trades];
-	DELETE FROM [dbo].[tb_signals];
+	DELETE FROM [dbo].[tb_trades] where 1=1;
+	DELETE FROM [dbo].[tb_signals] where 1=1;
 	-- flag trades older than 20 days and stop tracking prices 
 	update dbo.tb_tradeshistory
 	set isActive = 0 
-	where DATEDIFF(day,bar_date , lastupdatedon) > 12 and isActive is null 
+	where abs(DATEDIFF(day,bar_date , getdate())) > 20  and isActive is null
+	
+	-- delete trade details older than 20 days to minimize data storage
+	DELETE from [dbo].[tb_tradeshistory_details]
+	where abs(DATEDIFF(day,bar_date , getdate())) > 20 
+
 	-- flag low quality trades as inactive
 	update dbo.tb_tradeshistory
 	set isActive = 0 

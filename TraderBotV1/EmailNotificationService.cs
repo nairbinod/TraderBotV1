@@ -49,7 +49,7 @@ namespace TraderBotV1
 		/// Updated to handle both Buy and Sell signals
 		/// </summary>
 		public async Task<bool> SendTradingSignalNotificationAsync(
-			string recipientEmail,
+			List<string> recipientEmails,
 			List<TradingSignal> signals)
 		{
 			if (signals == null || signals.Count == 0)
@@ -81,7 +81,40 @@ namespace TraderBotV1
 				var htmlContent = GenerateTradingSignalHtml(signals, buySignals, sellSignals);
 				var textContent = GenerateTradingSignalText(signals, buySignals, sellSignals);
 
-				return await SendEmailAsync(recipientEmail, subject, htmlContent, textContent);
+				// convert recipient list to groups of 50 comma-separated string
+				// convert recipient list to groups of 50 comma-separated string
+				var cleanedRecipients = (recipientEmails ?? new List<string>())
+										.Where(e => !string.IsNullOrWhiteSpace(e))
+										.Select(e => e.Trim())
+										.Distinct(StringComparer.OrdinalIgnoreCase)
+										.ToList();
+
+				if (cleanedRecipients.Count == 0)
+				{
+					Console.WriteLine("⚠️ No valid recipient emails provided");
+					return false;
+				}
+
+				const int BatchSize = 50;
+				var allSucceeded = true;
+
+				for (int i = 0; i < cleanedRecipients.Count; i += BatchSize)
+				{
+					var batch = cleanedRecipients.Skip(i).Take(BatchSize);
+					var recipientBatchString = string.Join(";", batch);
+
+					var success = await SendEmailAsync(recipientBatchString, subject, htmlContent, textContent);
+					if (!success)
+					{
+						allSucceeded = false;
+						Console.WriteLine($"❌ Failed to send batch starting at index {i} to {batch.Count()} recipient(s)");
+						// continue attempting remaining batches
+					}
+				}
+
+				return allSucceeded;
+
+				//return await SendEmailAsync(recipientEmails, subject, htmlContent, textContent);
 			}
 			catch (Exception ex)
 			{
@@ -94,10 +127,10 @@ namespace TraderBotV1
 		/// Backward compatibility method for Buy signals only
 		/// </summary>
 		public async Task<bool> SendBuySignalNotificationAsync(
-			string recipientEmail,
+			List<string> recipientEmails,
 			List<TradingSignal> signals)
 		{
-			return await SendTradingSignalNotificationAsync(recipientEmail, signals);
+			return await SendTradingSignalNotificationAsync(recipientEmails, signals);
 		}
 
 		/// <summary>

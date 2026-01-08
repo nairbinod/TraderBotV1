@@ -45,7 +45,7 @@ namespace TraderBotV1
 
 		// Weekly trend alignment
 		private const bool REQUIRE_WEEKLY_ALIGNMENT = true;   // Must align with weekly trend
-		private const decimal MIN_WEEKLY_TREND_STRENGTH = 0.02m;  // 2% weekly move minimum
+		private const decimal MIN_WEEKLY_TREND_STRENGTH = 0.015m;  // 1.5% weekly move minimum (relaxed from 2%)
 
 		// Gap risk management
 		private const decimal MAX_AVG_GAP_PERCENT = 0.025m;   // 2.5% avg gap = high risk
@@ -56,7 +56,7 @@ namespace TraderBotV1
 		private const decimal MAX_ATR_PERCENT = 0.1m;        // 5% maximum daily ATR
 
 		// Processing limits
-		private const int MAX_CONCURRENT_SYMBOLS = 10;
+		private const int MAX_CONCURRENT_SYMBOLS = 5;
 		private const int RATE_LIMIT_DELAY_MS = 300;          // Reduced from 500ms
 
 		public SmartBot(IMarketDataProvider dataProvider, SqlServerStorage db, Config cfg,
@@ -72,21 +72,40 @@ namespace TraderBotV1
 		{
 			DateTime? processDate = null;
 
+			var _subscribers = _db.GetActiveSubscribers();
+			await _engine.SendSessionNotificationsAsync(_subscribers);
+
+			// PSEUDOCODE / PLAN:
+			// 1. Set startDate to the configured backtest start (existing value).
+			// 2. Initialize currentDate to startDate.Date.
+			// 3. Loop while currentDate.Date <= today's UTC date:
+			//    a. Set processDate to currentDate.Date + 23:30 (end-of-day UTC marker).
+			//    b. Await ProcessTradingDayAsync(processDate).
+			//    c. Increment currentDate by one day.
+			// 4. Preserve the existing local function ProcessTradingDayAsync unchanged.
+			// 5. Use DateTime.UtcNow.Date to determine today's date (process up to and including today).
+			// 6. This replaces the previous fixed-count for-loop.
+
 			PrintHeader();
-			//DateTime startDate = new DateTime(2025, 12, 12, 22,0,0);
+			DateTime startDate = new DateTime(2026, 1, 7, 22, 0, 0);
+			// Use the date portion of startDate as the loop base (avoid accumulating hours incorrectly)
 			//processDate = startDate;
-			//start processing date(for backtesting) starting from 11 / 1 / 2025 to today
-			//for (int i = 0; i < 3; i++)
+			// Process from startDate up to today's UTC date (inclusive)
+			//while (startDate.Date <= DateTime.UtcNow.Date)
 			//{
-				//processDate = startDate.AddDays(i).AddHours(23).AddMinutes(30); // set to end of day UTC	
+				processDate = startDate;
 				await ProcessTradingDayAsync(processDate);
+
+				//Move to next day
+
+				//startDate = startDate.AddDays(1);
 			//}
 
 			async Task ProcessTradingDayAsync(DateTime? processDate)
 			{
 				// process day
 				// Check entry timing restrictions
-				if (!IsValidEntryTiming(processDate== null ? DateTime.Now: processDate.Value))
+				if (!IsValidEntryTiming(processDate == null ? DateTime.Now : processDate.Value))
 				{
 					Console.WriteLine("\n⏰ Entry timing restrictions active. Skipping signal generation.");
 					Console.WriteLine("   Run analysis without executing trades, or wait for optimal entry window.");
@@ -107,29 +126,38 @@ namespace TraderBotV1
 					if (symbols.Length > 10) Console.WriteLine($"   ... and {symbols.Length - 10} more");
 					Console.WriteLine("═══════════════════════════════════════════════════════\n");
 
-					var results = new Dictionary<string, ProcessResult>();
+					var results = new System.Collections.Concurrent.ConcurrentDictionary<string, ProcessResult>();
 					var swingMetrics = new SwingTradingMetrics();
-
-					int completed = 0;
 					int total = symbols.Length;
+					int completed = 0;
 
-					foreach (var symbol in symbols)
+					// Process symbols in parallel batches
+					var semaphore = new SemaphoreSlim(MAX_CONCURRENT_SYMBOLS);
+					var tasks = symbols.Select(async symbol =>
 					{
-						completed++;
-						Console.WriteLine($"[{completed}/{total}] Processing {symbol}...");
-
-						var result = await ProcessSymbolForSwingAsync(symbol, swingMetrics, processDate);
-						results[symbol] = result;
-
-						if (completed < total)
+						await semaphore.WaitAsync();
+						try
 						{
+							var currentCount = Interlocked.Increment(ref completed);
+							Console.WriteLine($"[{currentCount}/{total}] Processing {symbol}...");
+
+							var result = await ProcessSymbolForSwingAsync(symbol, swingMetrics, processDate);
+							results[symbol] = result;
+
+							// Rate limit delay between batches
 							await Task.Delay(RATE_LIMIT_DELAY_MS);
 						}
-					}
+						finally
+						{
+							semaphore.Release();
+						}
+					}).ToArray();
+
+					await Task.WhenAll(tasks);
 					var _subscribers = _db.GetActiveSubscribers();
 					await _engine.SendSessionNotificationsAsync(_subscribers);
 
-					PrintSwingSummary(results, swingMetrics);
+					PrintSwingSummary(new Dictionary<string, ProcessResult>(results), swingMetrics);
 				}
 
 				//update traded symbols current value 
@@ -266,7 +294,7 @@ namespace TraderBotV1
 					result.Message = volatilityCheck.Message;
 					Console.WriteLine($"   ⚠️ {volatilityCheck.Message}");
 					_db.InsertSignal(symbol, DateTime.UtcNow, "SwingFilter", "Hold", volatilityCheck.Message);
-					metrics.VolatilityFiltered++;
+					metrics.IncrementVolatilityFiltered();
 					return result;
 				}
 
@@ -280,7 +308,7 @@ namespace TraderBotV1
 						result.Message = weeklyTrend.Message;
 						Console.WriteLine($"   ⚠️ {weeklyTrend.Message}");
 						_db.InsertSignal(symbol, DateTime.UtcNow, "SwingFilter", "Hold", weeklyTrend.Message);
-						metrics.WeeklyTrendFiltered++;
+						metrics.IncrementWeeklyTrendFiltered();
 						return result;
 					}
 					Console.WriteLine($"   ✅ Weekly trend: {weeklyTrend.Direction} ({weeklyTrend.Strength:P1})");
@@ -291,7 +319,7 @@ namespace TraderBotV1
 				if (gapRisk.RiskLevel == "High")
 				{
 					Console.WriteLine($"   ⚠️ High gap risk ({gapRisk.AvgGapPercent:P2}) - confidence penalty applied");
-					metrics.HighGapRiskCount++;
+					metrics.IncrementHighGapRiskCount();
 				}
 
 				// 4. Pullback Entry Check (for trend-following)
@@ -299,7 +327,7 @@ namespace TraderBotV1
 				if (pullback.IsInPullback)
 				{
 					Console.WriteLine($"   📉 Pullback detected: {pullback.Depth:P1} from recent high");
-					metrics.PullbackEntries++;
+					metrics.IncrementPullbackEntries();
 				}
 
 				// Persist price data if configured
@@ -327,7 +355,7 @@ namespace TraderBotV1
 					result.InPullback = pullback.IsInPullback;
 
 					Console.WriteLine($"   ✅ Completed swing analysis for {symbol}");
-					metrics.Analyzed++;
+					metrics.IncrementAnalyzed();
 				}
 				// Show summary
 				SignalBlockageDiagnostic.RunBatchDiagnostic(diagnosticResults);
@@ -475,6 +503,7 @@ namespace TraderBotV1
 
 		/// <summary>
 		/// Analyze weekly trend for alignment with daily signals
+		/// IMPROVED: More flexible trend detection allowing transitional trends
 		/// </summary>
 		private (bool IsValid, string Direction, decimal Strength, string Message) AnalyzeWeeklyTrend(
 			List<decimal> closes, List<decimal> highs, List<decimal> lows)
@@ -496,16 +525,41 @@ namespace TraderBotV1
 			decimal ema20Val = ema20[idx];
 			decimal ema40Val = ema40[idx];
 
-			// Weekly trend determination
-			bool bullish = price > ema20Val && ema20Val > ema40Val;
-			bool bearish = price < ema20Val && ema20Val < ema40Val;
-
 			// Calculate trend strength (price distance from 40-day EMA)
 			decimal strength = Math.Abs(price - ema40Val) / ema40Val;
 
+			// Weekly trend determination - IMPROVED: More flexible detection
+			// Strong bullish: price > ema20 > ema40
+			// Weak bullish: price > ema40 (even if ema20 < ema40, price showing strength)
+			// Strong bearish: price < ema20 < ema40
+			// Weak bearish: price < ema40 (even if ema20 > ema40, price showing weakness)
+
+			bool strongBullish = price > ema20Val && ema20Val > ema40Val;
+			bool weakBullish = price > ema40Val && price > ema20Val; // Price leading the EMAs
+			bool emergingBullish = price > ema20Val && ema20Val <= ema40Val && (ema20Val / ema40Val) > 0.98m; // EMAs converging up
+
+			bool strongBearish = price < ema20Val && ema20Val < ema40Val;
+			bool weakBearish = price < ema40Val && price < ema20Val; // Price leading down
+			bool emergingBearish = price < ema20Val && ema20Val >= ema40Val && (ema20Val / ema40Val) < 1.02m; // EMAs converging down
+
+			bool bullish = strongBullish || weakBullish || emergingBullish;
+			bool bearish = strongBearish || weakBearish || emergingBearish;
+
 			if (!bullish && !bearish)
 			{
-				return (false, "Neutral", strength, "No clear weekly trend direction");
+				// Last check: if price is clearly above/below both EMAs, allow it
+				if (price > ema20Val * 1.01m && price > ema40Val * 1.01m)
+				{
+					bullish = true;
+				}
+				else if (price < ema20Val * 0.99m && price < ema40Val * 0.99m)
+				{
+					bearish = true;
+				}
+				else
+				{
+					return (false, "Neutral", strength, "No clear weekly trend direction");
+				}
 			}
 
 			if (strength < MIN_WEEKLY_TREND_STRENGTH)
@@ -515,7 +569,8 @@ namespace TraderBotV1
 			}
 
 			string direction = bullish ? "Bullish" : "Bearish";
-			return (true, direction, strength, $"Weekly {direction} trend confirmed");
+			string trendType = strongBullish || strongBearish ? "strong" : "emerging";
+			return (true, direction, strength, $"Weekly {direction} trend confirmed ({trendType})");
 		}
 
 		/// <summary>
@@ -591,12 +646,33 @@ namespace TraderBotV1
 
 		private async Task UpdateTradedSymbols(DateTime? processDate)
 		{
-
 			var symbols = GetTradedSymbols();
-			foreach (var symbol in symbols)
+
+			if (symbols.Length == 0)
 			{
-				UpdateCurrentValue(symbol, processDate);
+				await CreateTradeHistoryDetails(processDate);
+				return;
 			}
+
+			Console.WriteLine($"📈 Updating current values for {symbols.Length} symbols in parallel...");
+
+			// Process symbol updates in parallel with rate limiting
+			var semaphore = new SemaphoreSlim(MAX_CONCURRENT_SYMBOLS);
+			var tasks = symbols.Select(async symbol =>
+			{
+				await semaphore.WaitAsync();
+				try
+				{
+					await UpdateCurrentValueAsync(symbol, processDate);
+					await Task.Delay(RATE_LIMIT_DELAY_MS);
+				}
+				finally
+				{
+					semaphore.Release();
+				}
+			}).ToArray();
+
+			await Task.WhenAll(tasks);
 			await CreateTradeHistoryDetails(processDate);
 		}
 
@@ -665,17 +741,23 @@ namespace TraderBotV1
 					return th;
 				}
 
-				Console.WriteLine($"📋 Updating prices for {th.Count()} trades...");
+				var tradeList = th.ToList();
+				Console.WriteLine($"📋 Updating prices for {tradeList.Count} trades in parallel...");
 
 				int processed = 0;
 				int successful = 0;
 				int failed = 0;
+				int total = tradeList.Count;
 
-				foreach (var trade in th)
+				// Process trades in parallel with rate limiting
+				var semaphore = new SemaphoreSlim(MAX_CONCURRENT_SYMBOLS);
+				var tasks = tradeList.Select(async trade =>
 				{
-					processed++;
+					await semaphore.WaitAsync();
 					try
 					{
+						var currentCount = Interlocked.Increment(ref processed);
+
 						// Fetch current price for the symbol
 						var currentBar = await FetchCurrentPrice(trade.Symbol, processDate);
 
@@ -689,27 +771,31 @@ namespace TraderBotV1
 								currentBar.TimestampUtc,
 								currentBar.Close);
 
-							successful++;
-							Console.WriteLine($"   [{processed}/{th.Count()}] ✅ {trade.Symbol}: ${currentBar.Close:F2}");
+							Interlocked.Increment(ref successful);
+							Console.WriteLine($"   [{currentCount}/{total}] ✅ {trade.Symbol}: ${currentBar.Close:F2}");
 						}
 						else
 						{
-							failed++;
-							Console.WriteLine($"   [{processed}/{th.Count()}] ❌ {trade.Symbol}: No price data available");
+							Interlocked.Increment(ref failed);
+							Console.WriteLine($"   [{currentCount}/{total}] ❌ {trade.Symbol}: No price data available");
 						}
 
 						// Rate limiting between API calls
-						if (processed < th.Count())
-						{
-							await Task.Delay(RATE_LIMIT_DELAY_MS);
-						}
+						await Task.Delay(RATE_LIMIT_DELAY_MS);
 					}
 					catch (Exception ex)
 					{
-						failed++;
-						Console.WriteLine($"   [{processed}/{th.Count()}] ❌ {trade.Symbol}: {ex.Message}");
+						Interlocked.Increment(ref failed);
+						var currentCount = processed;
+						Console.WriteLine($"   [{currentCount}/{total}] ❌ {trade.Symbol}: {ex.Message}");
 					}
-				}
+					finally
+					{
+						semaphore.Release();
+					}
+				}).ToArray();
+
+				await Task.WhenAll(tasks);
 
 				Console.WriteLine($"📊 Trade history update complete: {successful} successful, {failed} failed");
 				return th;
@@ -735,11 +821,11 @@ namespace TraderBotV1
 			return null;
 		}
 
-		private void UpdateCurrentValue(string symbol, DateTime? processDate)
+		private async Task UpdateCurrentValueAsync(string symbol, DateTime? processDate)
 		{
 			try
 			{
-				var bar = FetchCurrentPrice(symbol, processDate).Result;
+				var bar = await FetchCurrentPrice(symbol, processDate);
 				if (bar == null) return;
 				var currentPrice = bar.Close;
 				if (currentPrice > 0)
@@ -873,11 +959,23 @@ namespace TraderBotV1
 
 		private class SwingTradingMetrics
 		{
-			public int Analyzed { get; set; }
-			public int VolatilityFiltered { get; set; }
-			public int WeeklyTrendFiltered { get; set; }
-			public int HighGapRiskCount { get; set; }
-			public int PullbackEntries { get; set; }
+			private int _analyzed;
+			private int _volatilityFiltered;
+			private int _weeklyTrendFiltered;
+			private int _highGapRiskCount;
+			private int _pullbackEntries;
+
+			public int Analyzed => _analyzed;
+			public int VolatilityFiltered => _volatilityFiltered;
+			public int WeeklyTrendFiltered => _weeklyTrendFiltered;
+			public int HighGapRiskCount => _highGapRiskCount;
+			public int PullbackEntries => _pullbackEntries;
+
+			public void IncrementAnalyzed() => Interlocked.Increment(ref _analyzed);
+			public void IncrementVolatilityFiltered() => Interlocked.Increment(ref _volatilityFiltered);
+			public void IncrementWeeklyTrendFiltered() => Interlocked.Increment(ref _weeklyTrendFiltered);
+			public void IncrementHighGapRiskCount() => Interlocked.Increment(ref _highGapRiskCount);
+			public void IncrementPullbackEntries() => Interlocked.Increment(ref _pullbackEntries);
 		}
 	}
 }
