@@ -72,8 +72,8 @@ namespace TraderBotV1
 		{
 			DateTime? processDate = null;
 
-			var _subscribers = _db.GetActiveSubscribers();
-			await _engine.SendSessionNotificationsAsync(_subscribers);
+			//var _subscribers = _db.GetActiveSubscribers();
+			//await _engine.SendSessionNotificationsAsync(_subscribers);
 
 			// PSEUDOCODE / PLAN:
 			// 1. Set startDate to the configured backtest start (existing value).
@@ -87,13 +87,13 @@ namespace TraderBotV1
 			// 6. This replaces the previous fixed-count for-loop.
 
 			PrintHeader();
-			DateTime startDate = new DateTime(2026, 1, 7, 22, 0, 0);
+			//DateTime startDate = new DateTime(2026, 1, 7, 22, 0, 0);
 			// Use the date portion of startDate as the loop base (avoid accumulating hours incorrectly)
 			//processDate = startDate;
 			// Process from startDate up to today's UTC date (inclusive)
 			//while (startDate.Date <= DateTime.UtcNow.Date)
 			//{
-				processDate = startDate;
+				//processDate = startDate;
 				await ProcessTradingDayAsync(processDate);
 
 				//Move to next day
