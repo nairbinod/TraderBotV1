@@ -98,3 +98,107 @@ BEGIN
 		END
 END
 go
+
+
+-- TEST TABLES
+
+DROP PROC dbo.ResetData_test
+GO
+Create PROC dbo.ResetData_test
+AS
+	INSERT INTO [dbo].[tb_tradeshistory_test]
+			([id]
+			,[symbol]
+			,[signal_timestamp]
+			,[bar_date]
+			,[side]
+			,[quantity]
+			,[price]
+			,[total_value]
+			,[confidence]
+			,[quality]
+			,[created_at]
+			,[current_price]
+			,[lastupdatedon]
+			,[isActive])
+	SELECT [id]
+		,[symbol]
+		,[signal_timestamp]
+		,[bar_date]
+		,[side]
+		,[quantity]
+		,[price]
+		,[total_value]
+		,[confidence]
+		,[quality]
+		,[created_at]
+		,[current_price]
+		,[lastupdatedon]
+		,[isActive]
+	FROM [dbo].[tb_trades_test]
+	where side = 'Buy';
+	DELETE FROM [dbo].[tb_trades_test] where 1=1;
+	DELETE FROM [dbo].[tb_signals_test] where 1=1;
+	-- flag trades older than 20 days and stop tracking prices 
+	update dbo.tb_tradeshistory_test
+	set isActive = 0 
+	where abs(DATEDIFF(day,bar_date , getdate())) > 20  and isActive is null
+	
+	-- delete trade details older than 20 days to minimize data storage
+	DELETE from [dbo].[tb_tradeshistory_details_test]
+	where abs(DATEDIFF(day,bar_date , getdate())) > 20 
+
+	-- flag low quality trades as inactive
+	update dbo.tb_tradeshistory_test
+	set isActive = 0 
+	where (confidence <.7 or quality < .7) and isActive is null ;
+	
+	-- DELETE Dduplicate records 
+	WITH Dups AS (
+	SELECT 
+		id,
+		symbol,
+		bar_date,
+		ROW_NUMBER() OVER (
+			PARTITION BY symbol, bar_date
+			ORDER BY id DESC       -- keep newest id
+		) AS rn
+	FROM [tb_tradeshistory_test]
+	)
+	delete FROM Dups
+	WHERE rn > 1;
+GO
+drop PROCEDURE [dbo].[InsertTradeHistoryDetail_test]
+go
+CREATE PROCEDURE [dbo].[InsertTradeHistoryDetail_test]
+    @tradeHistoryId INT,
+    @symbol NVARCHAR(50),
+    @timestamp DATETIME2 NULL,
+    @barDate DATETIME2 NULL,
+    @price DECIMAL(18,6),
+    @created_at DATETIME2
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+	if not exists(select * from [tb_tradeshistory_details_test] where  [tb_tradehistory_id] = @tradeHistoryId and [symbol] = @symbol and bar_date = @barDate)
+	BEGIN
+		INSERT INTO [tb_tradeshistory_details_test] (
+			 [tb_tradehistory_id],
+			 [symbol],
+			 [signal_timestamp],
+			 [bar_date],
+			 [price],
+			 [created_at]
+		)
+		VALUES (
+			 @tradeHistoryId,
+			 @symbol,
+			 @timestamp,
+			 @barDate,
+			 @price,
+			 @created_at
+		);
+		END
+END
+go

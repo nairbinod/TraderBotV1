@@ -219,7 +219,7 @@ namespace TraderBotV1
 			try
 			{
 				Console.WriteLine("💾 Initializing database...");
-				var db = new SqlServerStorage();
+				var db = new SqlServerStorage(config.Mode.ToLower() == "test" ? true : false);
 				Console.WriteLine("✅ Database ready\n");
 				return db;
 			}

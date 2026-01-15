@@ -45,15 +45,15 @@ namespace TraderBotV1
 
 		// Weekly trend alignment
 		private const bool REQUIRE_WEEKLY_ALIGNMENT = true;   // Must align with weekly trend
-		private const decimal MIN_WEEKLY_TREND_STRENGTH = 0.015m;  // 1.5% weekly move minimum (relaxed from 2%)
+		private const decimal MIN_WEEKLY_TREND_STRENGTH = 0.01m;  // 1.0% weekly move minimum (relaxed from 1.5%)
 
 		// Gap risk management
 		private const decimal MAX_AVG_GAP_PERCENT = 0.025m;   // 2.5% avg gap = high risk
 		private const decimal GAP_RISK_PENALTY = 0.10m;       // 10% confidence penalty for high gap risk
 
 		// Volatility regime
-		private const decimal MIN_ATR_PERCENT = 0.008m;       // 0.8% minimum daily ATR
-		private const decimal MAX_ATR_PERCENT = 0.1m;        // 5% maximum daily ATR
+		private const decimal MIN_ATR_PERCENT = 0.006m;       // 0.6% minimum daily ATR (relaxed from 0.8%)
+		private const decimal MAX_ATR_PERCENT = 0.12m;        // 12% maximum daily ATR (relaxed from 10%)
 
 		// Processing limits
 		private const int MAX_CONCURRENT_SYMBOLS = 5;
@@ -87,7 +87,7 @@ namespace TraderBotV1
 			// 6. This replaces the previous fixed-count for-loop.
 
 			PrintHeader();
-			//DateTime startDate = new DateTime(2026, 1, 7, 22, 0, 0);
+			processDate = new DateTime(2025, 10, 14, 22, 0, 0);
 			// Use the date portion of startDate as the loop base (avoid accumulating hours incorrectly)
 			//processDate = startDate;
 			// Process from startDate up to today's UTC date (inclusive)
@@ -154,8 +154,8 @@ namespace TraderBotV1
 					}).ToArray();
 
 					await Task.WhenAll(tasks);
-					var _subscribers = _db.GetActiveSubscribers();
-					await _engine.SendSessionNotificationsAsync(_subscribers);
+					//var _subscribers = _db.GetActiveSubscribers();
+					//await _engine.SendSessionNotificationsAsync(_subscribers);
 
 					PrintSwingSummary(new Dictionary<string, ProcessResult>(results), swingMetrics);
 				}

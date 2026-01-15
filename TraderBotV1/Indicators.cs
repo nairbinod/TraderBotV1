@@ -2916,9 +2916,9 @@ namespace TraderBotV1
 
 			decimal ciValue = ci[idx];
 
-			// GATE: Market must not be too choppy
-			if (ciValue >61.8m)
-				return validation.Fail($"Market too choppy (CI={ciValue:F1} > 61.8)");
+			// GATE: Market must not be too choppy (relaxed from 61.8 to 65)
+			if (ciValue > 65m)
+				return validation.Fail($"Market too choppy (CI={ciValue:F1} > 65)");
 
 			if (ciValue < 38.2m)
 			{

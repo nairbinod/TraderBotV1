@@ -105,10 +105,10 @@ namespace TraderBotV1
 			result.PassedChoppiness = true;
 
 			// Regime confidence check
-			if (regime.RegimeConfidence < 0.40m)
+			if (regime.RegimeConfidence < 0.35m)
 			{
 				result.BlockedAt = "REGIME_CONFIDENCE_LOW";
-				result.Details = $"Regime confidence {regime.RegimeConfidence:P0} < 40%";
+				result.Details = $"Regime confidence {regime.RegimeConfidence:P0} < 35%";
 				return result;
 			}
 			result.PassedRegimeConfidence = true;
@@ -169,12 +169,12 @@ namespace TraderBotV1
 			result.SellConfidence = sellSignals.Count > 0
 				? sellSignals.Average(s => s.signal.Strength) : 0m;
 
-			// Vote count check
+			// Vote count check - relaxed to 4 votes
 			int relevantVotes = allowedDirection == "Buy" ? buySignals.Count : sellSignals.Count;
-			if (relevantVotes < 5)
+			if (relevantVotes < 4)
 			{
 				result.BlockedAt = "INSUFFICIENT_VOTES";
-				result.Details = $"Only {relevantVotes} {allowedDirection} votes (need 5). " +
+				result.Details = $"Only {relevantVotes} {allowedDirection} votes (need 4). " +
 					$"Total: {buySignals.Count} Buy, {sellSignals.Count} Sell";
 
 				// Show which strategies voted
@@ -217,10 +217,10 @@ namespace TraderBotV1
 				opens, closes, highs, lows, volumes, allowedDirection);
 			result.QualityScore = qualityScore;
 
-			if (qualityScore < 0.48m)
+			if (qualityScore < 0.45m)
 			{
 				result.BlockedAt = "QUALITY_SCORE_LOW";
-				result.Details = $"Quality {qualityScore:P0} < 48%";
+				result.Details = $"Quality {qualityScore:P0} < 45%";
 				return result;
 			}
 			result.PassedQualityScore = true;

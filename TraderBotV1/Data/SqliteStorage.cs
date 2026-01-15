@@ -7,11 +7,10 @@ namespace TraderBotV1.Data
 	public class SqlServerStorage
 	{
 		private readonly string _connectionString = "Server=23.19.249.88,784;Database=nairbinod_lmsone;User Id=nairbinod_sa;Password=33!6Shady;Encrypt=False;TrustServerCertificate=true";
-
-		public SqlServerStorage(string connectionString = "")
+		private string _isTest = string.Empty;
+		public SqlServerStorage(bool isTestMode)
 		{
-			//_connectionString = connectionString;
-			//InitializeDatabase();
+			if(isTestMode) _isTest = "_test";
 		}
 
 		private void InitializeDatabase()
@@ -99,8 +98,8 @@ namespace TraderBotV1.Data
 		{
 			using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
-				INSERT INTO tb_prices (symbol, timestamp, [open], high, low, [close], volume)
+			var sql = $@"
+				INSERT INTO tb_prices{_isTest} (symbol, timestamp, [open], high, low, [close], volume)
 				VALUES (@symbol, @timestamp, @open, @high, @low, @close, @volume)";
 
 			conn.Execute(sql, new
@@ -136,7 +135,7 @@ namespace TraderBotV1.Data
 
 			var sql = $@"
 				SELECT id, symbol, timestamp, [open], high, low, [close], volume, created_at
-				FROM tb_prices
+				FROM tb_prices{_isTest}
 				WHERE {string.Join(" AND ", whereClauses)}
 				ORDER BY timestamp ASC";
 
@@ -151,8 +150,8 @@ namespace TraderBotV1.Data
 		{
 			using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
-				INSERT INTO tb_signals (symbol, timestamp, strategy, signal, reason)
+			var sql = $@"
+				INSERT INTO tb_signals{_isTest} (symbol, timestamp, strategy, signal, reason)
 				VALUES (@symbol, @timestamp, @strategy, @signal, @reason)";
 
 			conn.Execute(sql, new
@@ -192,7 +191,7 @@ namespace TraderBotV1.Data
 
 			var sql = $@"
 				SELECT id, symbol, timestamp, strategy, signal, reason, created_at
-				FROM tb_signals
+				FROM tb_signals{_isTest}
 				{whereClause}
 				ORDER BY timestamp DESC";
 
@@ -208,8 +207,8 @@ namespace TraderBotV1.Data
 		{
 			using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
-				INSERT INTO tb_trades (symbol, signal_timestamp, bar_date, side, quantity, price, total_value,confidence,quality)
+			var sql = $@"
+				INSERT INTO tb_trades{_isTest} (symbol, signal_timestamp, bar_date, side, quantity, price, total_value,confidence,quality)
 				VALUES (@symbol, @signalTimestamp, @barDate, @side, @quantity, @price, @totalValue, @confidence,@quality)";
 
 			conn.Execute(sql, new
@@ -259,7 +258,7 @@ namespace TraderBotV1.Data
 
 			var sql = $@"
 				SELECT id, symbol, signal_timestamp, bar_date, side, quantity, price, total_value, created_at
-				FROM dbo.tb_trades
+				FROM dbo.tb_trades{_isTest}
 				{whereClause}
 				ORDER BY bar_date DESC, signal_timestamp DESC";
 
@@ -287,7 +286,7 @@ namespace TraderBotV1.Data
 		{
 			using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"SELECT DISTINCT email FROM tb_subscribers;";
+			var sql = $@"SELECT DISTINCT email FROM tb_subscribers{_isTest};";
 
 			// Fix: Use QueryFirstOrDefault to retrieve a single string value
 			return conn.Query<string>(sql).ToList();
@@ -298,7 +297,7 @@ namespace TraderBotV1.Data
 			// Example Dapper code (commented out):
 
 			using var conn = new SqlConnection(_connectionString);
-			var sql = @"
+			var sql = $@"
 				SELECT
 				   [id]
 				  ,[symbol]
@@ -313,7 +312,7 @@ namespace TraderBotV1.Data
 				  ,[created_at] CreatedAt
 				  ,[current_price] CurrentPrice
 				  ,[lastupdatedon]
-				FROM dbo.[tb_tradeshistory]
+				FROM dbo.[tb_tradeshistory]{_isTest}
 				WHERE isActive is null or isActive = 1 
 				ORDER BY [bar_date] ASC,quality DESC,confidence DESC";
 			//[bar_date] BETWEEN @From AND @To
@@ -328,7 +327,7 @@ namespace TraderBotV1.Data
 		{
 			using var conn = new SqlConnection(_connectionString);
 
-			conn.Execute("InsertTradeHistoryDetail",
+			conn.Execute($"InsertTradeHistoryDetail{_isTest}",
 													new
 													{
 														tradeHistoryId,
@@ -345,8 +344,8 @@ namespace TraderBotV1.Data
 		{
 			using var conn = new SqlConnection(_connectionString);
 
-			var sql = @"
-				UPDATE dbo.tb_TradesHistory 
+			var sql = $@"
+				UPDATE dbo.tb_TradesHistory{_isTest} 
 				SET current_price = @current_price, 
 					lastupdatedon = @lastupdatedon 
 				WHERE symbol = @symbol";
@@ -390,7 +389,7 @@ namespace TraderBotV1.Data
 					ISNULL(AVG(price), 0) as AvgPrice,
 					ISNULL(MIN(price), 0) as MinPrice,
 					ISNULL(MAX(price), 0) as MaxPrice
-				FROM dbo.tb_trades
+				FROM dbo.tb_trades{_isTest}
 				WHERE {string.Join(" AND ", whereClauses)}";
 
 			var stats = conn.QueryFirstOrDefault<TradeStatistics>(sql, parameters);
@@ -410,7 +409,7 @@ namespace TraderBotV1.Data
 		public void ClearAllData()
 		{
 			using var conn = new SqlConnection(_connectionString);
-			conn.Execute(@"dbo.ResetData", commandType: CommandType.StoredProcedure);
+			conn.Execute($@"dbo.ResetData{_isTest}", commandType: CommandType.StoredProcedure);
 			Console.WriteLine("⚠️ All data cleared from database");
 		}
 	}

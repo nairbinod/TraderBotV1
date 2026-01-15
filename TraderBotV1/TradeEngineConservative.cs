@@ -59,27 +59,27 @@ namespace TraderBotV1
 		// Stricter than ultra-relaxed, but still generates signals
 		// ═══════════════════════════════════════════════════════════════
 
-		private const decimal MIN_COMPOSITE_SCORE = 0.55m;     // RELAXED: Allow more signals
+		private const decimal MIN_COMPOSITE_SCORE = 0.50m;     // RELAXED: 50% composite (was 55%)
 		private const int MIN_CONFIRMATIONS = 2;               // Keep at 2
 
-		private const int MIN_VOTES_REQUIRED = 5;              // RELAXED: 3 strategy votes
-		private const decimal MIN_STRATEGY_CONFIDENCE = 0.48m; // RELAXED: Lower confidence
-		private const decimal MIN_FINAL_CONFIDENCE = 0.48m;    // RELAXED: Lower confidence
-		private const decimal MIN_QUALITY_SCORE = 0.48m;       // RELAXED: 48% quality minimum
-		private const int MIN_STRATEGIES_FOR_ENTRY = 5;        // Match vote requirement
+		private const int MIN_VOTES_REQUIRED = 4;              // RELAXED: 4 strategy votes (was 5)
+		private const decimal MIN_STRATEGY_CONFIDENCE = 0.45m; // RELAXED: 45% confidence (was 48%)
+		private const decimal MIN_FINAL_CONFIDENCE = 0.45m;    // RELAXED: 45% confidence (was 48%)
+		private const decimal MIN_QUALITY_SCORE = 0.45m;       // RELAXED: 45% quality minimum (was 48%)
+		private const int MIN_STRATEGIES_FOR_ENTRY = 4;        // RELAXED: 4 strategies (was 5)
 
-		private const decimal MIN_VOTE_DOMINANCE = 0.52m;      // RELAXED: 52% vote agreement
-		private const decimal MIN_TREND_STRENGTH = 0.003m;     // RELAXED: 0.3% trend strength
-		private const decimal MIN_SIGNAL_GAP = 0.02m;          // RELAXED: 2% gap between buy/sell
-		private const decimal MAX_CHOPPINESS = 0.65m;          // RELAXED: Higher choppiness tolerance
-		private const decimal BOLLINGER_CONFLICT_PENALTY = 0.05m; // RELAXED: 5% penalty
+		private const decimal MIN_VOTE_DOMINANCE = 0.50m;      // RELAXED: 50% vote agreement (was 52%)
+		private const decimal MIN_TREND_STRENGTH = 0.002m;     // RELAXED: 0.2% trend strength (was 0.3%)
+		private const decimal MIN_SIGNAL_GAP = 0.015m;         // RELAXED: 1.5% gap (was 2%)
+		private const decimal MAX_CHOPPINESS = 0.70m;          // RELAXED: 70% choppiness (was 65%)
+		private const decimal BOLLINGER_CONFLICT_PENALTY = 0.03m; // RELAXED: 3% penalty (was 5%)
 
 		// Volatility bounds - wider range for swing trades
-		private const decimal MIN_VOLATILITY = 0.005m;         // RELAXED: 0.5% minimum
-		private const decimal MAX_VOLATILITY = 0.08m;          // RELAXED: 8% maximum
+		private const decimal MIN_VOLATILITY = 0.004m;         // RELAXED: 0.4% minimum (was 0.5%)
+		private const decimal MAX_VOLATILITY = 0.12m;          // RELAXED: 12% maximum (was 8%)
 
 		// Regime confidence
-		private const decimal MIN_REGIME_CONFIDENCE = 0.40m;   // RELAXED: 40% regime confidence
+		private const decimal MIN_REGIME_CONFIDENCE = 0.35m;   // RELAXED: 35% regime confidence (was 40%)
 
 		public TradeEngineConservative(SqlServerStorage db, decimal riskPercent = 0.015m,
 			EmailNotificationService? emailService = null)
@@ -828,10 +828,10 @@ namespace TraderBotV1
 			var ema50 = Indicators.EMAList(closes, 50);
 			decimal emaSeparation = Math.Abs(ema20[idx] - ema50[idx]) / ema50[idx];
 
-			// RELAXED: 0.4% EMA separation required
-			if (emaSeparation < 0.004m)
+			// RELAXED: 0.3% EMA separation required (was 0.4%)
+			if (emaSeparation < 0.003m)
 			{
-				Console.WriteLine($"   ❌ EMA too close ({emaSeparation:P2} < 0.4%)");
+				Console.WriteLine($"   ❌ EMA too close ({emaSeparation:P2} < 0.3%)");
 				return false;
 			}
 
@@ -863,10 +863,10 @@ namespace TraderBotV1
 				bool momentumMatch = (direction == "Buy" && momentum7D > 0) ||
 									(direction == "Sell" && momentum7D < 0);
 
-				// RELAXED: 0.5% minimum momentum
-				if (!momentumMatch || Math.Abs(momentum7D) < 0.005m)
+				// RELAXED: 0.3% minimum momentum (was 0.5%)
+				if (!momentumMatch || Math.Abs(momentum7D) < 0.003m)
 				{
-					Console.WriteLine($"   ❌ Weak momentum ({momentum7D:P2} < 0.5%)");
+					Console.WriteLine($"   ❌ Weak momentum ({momentum7D:P2} < 0.3%)");
 					return false;
 				}
 			}
@@ -877,10 +877,10 @@ namespace TraderBotV1
 				var avg5 = volumes.Skip(idx - 5).Take(5).Average();
 				var avg20 = volumes.Skip(idx - 20).Take(20).Average();
 
-				// RELAXED: 40% of average volume required
-				if (avg5 < avg20 * 0.40m)
+				// RELAXED: 30% of average volume required (was 40%)
+				if (avg5 < avg20 * 0.30m)
 				{
-					Console.WriteLine($"   ❌ Volume declining ({avg5 / avg20:P0} < 40%)");
+					Console.WriteLine($"   ❌ Volume declining ({avg5 / avg20:P0} < 30%)");
 					return false;
 				}
 			}

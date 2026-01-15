@@ -1,7 +1,7 @@
-select * from dbo.tb_signals 
+select * from dbo.tb_signals_test 
 where signal = 'buy' 
 
-select * from dbo.tb_trades
+select * from dbo.tb_trades_test
 where side = 'buy' and confidence > .7 and quality >= .7
 order by quality desc
 
@@ -45,11 +45,10 @@ AND lower(side) = 'buy' and confidence >= .7 and quality >= .7
 and [bar_date] BETWEEN '12/9/2025' AND '1/8/2026'
 ORDER BY [bar_date] ASC,quality DESC,confidence DESC
 /*
-delete from dbo.tb_tradeshistory
-delete from tb_signals
-delete from dbo.tb_trades
-
-delete from tb_tradeshistory_details
+delete from dbo.tb_tradeshistory_test
+delete from tb_signals_test
+delete from dbo.tb_trades_test
+delete from tb_tradeshistory_details_test
 
 update dbo.tb_tradeshistory
 set isActive = 0 
