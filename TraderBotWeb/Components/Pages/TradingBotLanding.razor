@@ -8,6 +8,14 @@
     <meta name="description" content="Get daily AI-powered stock buy recommendations with confidence and quality ratings. Subscribe to receive high-probability trading signals directly to your inbox." />
     <meta name="keywords" content="trading bot, stock recommendations, AI trading signals, buy signals, algorithmic trading" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-EZHRLZHN4T"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-EZHRLZHN4T');
+    </script>
 </HeadContent>
 
 <main class="container py-4 py-md-5">
@@ -23,12 +31,15 @@
                 TradingBot scans the markets every day to deliver high-confidence buy opportunities,
                 complete with confidence scores and quality ratings so you can act with clarity.
             </p>
-            <div class="d-flex flex-column flex-sm-row gap-3">
+            <div class="d-flex flex-column flex-sm-row gap-3 flex-wrap">
                 <a href="#subscribe" class="btn btn-primary btn-lg">
                     <i class="fas fa-bell me-2"></i>Subscribe to Recommendations
                 </a>
                 <a href="#recommendations" class="btn btn-outline-secondary btn-lg">
                     <i class="fas fa-chart-line me-2"></i>View Today&apos;s Signals
+                </a>
+                <a href="/performance" class="btn btn-outline-success btn-lg">
+                    <i class="fas fa-chart-bar me-2"></i>Performance Analysis
                 </a>
             </div>
             <div class="mt-3 text-muted small">

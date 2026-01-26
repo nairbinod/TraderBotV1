@@ -13,5 +13,6 @@ namespace TraderBotWeb.Services
 
         Task<IEnumerable<TradeHistoryDetailModel>> GetTradeHistoryDetailsAsync(int tradeHistoryId);
         Task<int> SaveSubscriberAsync(SubscriptionModel subscriber);
+        Task<IEnumerable<PredictionPerformanceModel>> GetPredictionPerformanceAsync(DateTime from, DateTime to);
     }
 }

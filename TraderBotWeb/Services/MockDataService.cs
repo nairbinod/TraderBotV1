@@ -173,5 +173,37 @@ namespace TraderBotWeb.Services
             subscriber.CreatedAt = DateTime.UtcNow;
             return 1;
         }
+
+        public Task<IEnumerable<PredictionPerformanceModel>> GetPredictionPerformanceAsync(DateTime from, DateTime to)
+        {
+            var rand = new Random();
+            var symbols = new[] { "AAPL", "MSFT", "TSLA", "GOOG", "AMZN", "NVDA", "META" };
+            var days = (to - from).Days + 1;
+            var predictions = new List<PredictionPerformanceModel>();
+
+            for (int i = 0; i < Math.Min(30, days); i++)
+            {
+                var symbol = symbols[rand.Next(symbols.Length)];
+                var date = from.AddDays(i);
+                var price = Math.Round(100 + rand.NextDouble() * 200, 2);
+                var currentPriceDelta = Math.Round((rand.NextDouble() - 0.4) * 20, 2);
+                var currentPrice = Math.Round(price + currentPriceDelta, 2);
+
+                predictions.Add(new PredictionPerformanceModel
+                {
+                    Id = i + 1,
+                    Symbol = symbol,
+                    BarDate = date,
+                    SignalTimestamp = date,
+                    RecommendedPrice = (decimal)price,
+                    CurrentPrice = (decimal)currentPrice,
+                    Confidence = (decimal)(0.7 + rand.NextDouble() * 0.3),
+                    Quality = (decimal)(0.7 + rand.NextDouble() * 0.3),
+                    Quantity = rand.Next(1, 20)
+                });
+            }
+
+            return Task.FromResult<IEnumerable<PredictionPerformanceModel>>(predictions);
+        }
     }
 }

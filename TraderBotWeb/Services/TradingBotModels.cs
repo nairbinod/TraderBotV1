@@ -93,4 +93,49 @@ namespace TraderBotWeb.Services
         // For DB persistence
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
+
+    public class PredictionPerformanceModel
+    {
+        public int Id { get; set; }
+        public string Symbol { get; set; } = string.Empty;
+        public DateTime BarDate { get; set; }
+        public DateTime SignalTimestamp { get; set; }
+        public decimal RecommendedPrice { get; set; }
+        public decimal CurrentPrice { get; set; }
+        public decimal Confidence { get; set; }
+        public decimal Quality { get; set; }
+        public int Quantity { get; set; }
+
+        public decimal GainLossAmount => CurrentPrice - RecommendedPrice;
+        public decimal GainLossPercent => RecommendedPrice > 0
+            ? (CurrentPrice - RecommendedPrice) / RecommendedPrice
+            : 0;
+        public bool IsWinner => CurrentPrice > RecommendedPrice;
+    }
+
+    public class WhatIfResultModel
+    {
+        public decimal InitialInvestment { get; set; }
+        public decimal FinalValue { get; set; }
+        public decimal TotalGainLoss => FinalValue - InitialInvestment;
+        public decimal TotalReturnPercent => InitialInvestment > 0
+            ? (FinalValue - InitialInvestment) / InitialInvestment
+            : 0;
+        public int TotalTrades { get; set; }
+        public decimal AverageInvestmentPerTrade { get; set; }
+        public List<WhatIfTradeDetail> TradeDetails { get; set; } = new();
+    }
+
+    public class WhatIfTradeDetail
+    {
+        public string Symbol { get; set; } = string.Empty;
+        public DateTime BarDate { get; set; }
+        public decimal InvestmentAmount { get; set; }
+        public decimal RecommendedPrice { get; set; }
+        public decimal CurrentPrice { get; set; }
+        public decimal SharesPurchased { get; set; }
+        public decimal CurrentValue { get; set; }
+        public decimal GainLoss { get; set; }
+        public decimal GainLossPercent { get; set; }
+    }
 }

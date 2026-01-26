@@ -130,14 +130,40 @@ namespace TraderBotWeb.Services
 		public async Task<int> SaveSubscriberAsync(SubscriptionModel subscriber)
 		{
 			// Example Dapper code (commented out):
-			
+
 			using var conn = new SqlConnection(_connectionString);
 			var sql = @"
 				INSERT INTO [dbo].[tb_subscribers] (email, frequency, accept_terms, created_at)
 				VALUES (@Email, @Frequency, @AcceptTerms, @CreatedAt)";
 			return await conn.ExecuteAsync(sql, subscriber);
-			
+
 			//throw new NotImplementedException("SqlDataService is a template. Add Dapper and enable code.");
+		}
+
+		public async Task<IEnumerable<PredictionPerformanceModel>> GetPredictionPerformanceAsync(DateTime from, DateTime to)
+		{
+			using var conn = new SqlConnection(_connectionString);
+			var sql = @"
+				SELECT
+					[id] as Id,
+					[symbol] as Symbol,
+					[bar_date] as BarDate,
+					[signal_timestamp] as SignalTimestamp,
+					[price] as RecommendedPrice,
+					[current_price] as CurrentPrice,
+					[confidence] as Confidence,
+					[quality] as Quality,
+					[quantity] as Quantity
+				FROM dbo.[tb_tradeshistory]
+				WHERE (isActive is null or isActive = 1)
+					AND lower(side) = 'buy'
+					AND confidence >= .7
+					AND quality >= .7
+					AND current_price > 0
+					AND price > 0
+					AND [bar_date] BETWEEN @From AND @To
+				ORDER BY [bar_date] ASC, quality DESC, confidence DESC";
+			return await conn.QueryAsync<PredictionPerformanceModel>(sql, new { From = from, To = to });
 		}
 	}
 }
